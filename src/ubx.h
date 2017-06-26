@@ -521,7 +521,6 @@ private:
      */
     void calc_checksum(const uint8_t *buffer, const uint16_t length, ubx_checksum_t *checksum);
 
-    bool               _configured;
     ubx_ack_state_t    _ack_state;
     ubx_decode_state_t _decode_state;
     uint16_t           _rx_msg;

@@ -70,7 +70,6 @@
 #define UBX_WARN(s, ...)        {Serial.printlnf(s, ## __VA_ARGS__);}
 
 UBX::UBX(std::function<void(uint16_t, const ubx_buf_t &)> callback) :
-    _configured(false),
     _ack_state(UBX_ACK_IDLE),
     _ack_waiting_msg(0),
     _nav_db_len(0),
@@ -83,8 +82,6 @@ UBX::UBX(std::function<void(uint16_t, const ubx_buf_t &)> callback) :
 UBX::~UBX() {}
 
 void UBX::start() {
-    _configured = false;
-
     // Start receiver
     Serial1.begin(9600);
     pinMode(D6, OUTPUT);
@@ -177,8 +174,6 @@ void UBX::start() {
     _buf.payload_tx_cfg_cfg.deviceMask = 0x01; // save to BBR
     send_message(UBX_MSG_CFG_CFG, _buf.raw, sizeof(_buf.payload_tx_cfg_cfg));
     if (!wait_for_ack(UBX_MSG_CFG_CFG, UBX_CONFIG_TIMEOUT)) UBX_WARN("No ack for CFG-CFG");
-
-    _configured = true;
 }
 
 void UBX::update() {
@@ -190,10 +185,14 @@ void UBX::update() {
 void UBX::stop() {
     // Turn off all messages
     configure_message_rate(UBX_MSG_NAV_PVT, 0);
-    wait_for_ack(UBX_MSG_CFG_MSG, UBX_CONFIG_TIMEOUT); // no ack expected
+    if (!wait_for_ack(UBX_MSG_CFG_MSG, UBX_CONFIG_TIMEOUT)) {
+        UBX_WARN("No ack for CFG-MSG NAV-PVT off");
+    }
 
     configure_message_rate(UBX_MSG_NAV_STATUS, 0);
-    wait_for_ack(UBX_MSG_CFG_MSG, UBX_CONFIG_TIMEOUT); // no ack expected
+    if (!wait_for_ack(UBX_MSG_CFG_MSG, UBX_CONFIG_TIMEOUT)) {
+        UBX_WARN("No ack for CFG-MSG NAV-STATUS off");
+    }
 
     // Wait for silence
     receive(100);
@@ -378,8 +377,6 @@ bool UBX::payload_rx_init() {
     case UBX_MSG_ACK_ACK:
         if (_rx_payload_length != sizeof(ubx_payload_rx_ack_ack_t)) {
             _rx_state = UBX_RXMSG_ERROR_LENGTH;
-        } else if (_configured) {
-            _rx_state = UBX_RXMSG_IGNORE;        // ignore if _configured
         } else {
             _rx_state = UBX_RXMSG_HANDLE;
         }
@@ -389,8 +386,6 @@ bool UBX::payload_rx_init() {
     case UBX_MSG_ACK_NAK:
         if (_rx_payload_length != sizeof(ubx_payload_rx_ack_nak_t)) {
             _rx_state = UBX_RXMSG_ERROR_LENGTH;
-        } else if (_configured) {
-            _rx_state = UBX_RXMSG_IGNORE;        // ignore if _configured
         } else {
             _rx_state = UBX_RXMSG_HANDLE;
         }

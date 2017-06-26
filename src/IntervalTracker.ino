@@ -64,10 +64,16 @@ double speed_mph = 0;
 
 bool ttff_valid = false;
 uint32_t ttff = 0;
+unsigned long clamped_ttff;
 
 const double mm_per_second_per_mph = 447.04;
 
 // -- Utilities ------------------------------------------------------------------------------------
+
+void resetGPSInfo() {
+    fix_valid = false;
+    ttff_valid = false;
+}
 
 void handleGPSMessage(uint16_t msg_class_id, const ubx_buf_t &buf) {
     switch (msg_class_id) {
@@ -160,6 +166,7 @@ void loop() {
             snprintf(buf, sizeof(buf), "[%lu] Starting GPS...\n", millis());
             Serial.write(buf);
             gps_begin_ms = millis();
+            resetGPSInfo();
             gps.start();
 
             state = WAIT_FOR_GPS;
@@ -177,6 +184,8 @@ void loop() {
                 Serial.write(buf);
             }
 
+            snprintf(buf, sizeof(buf), "[%lu] Stopping GPS.\n", millis());
+            Serial.write(buf);
             gps.stop();
 
             snprintf(buf, sizeof(buf), "[%lu] Connecting...\n", millis());
@@ -231,16 +240,18 @@ void loop() {
                 Particle.publish("cl", buf, PRIVATE, NO_ACK);
             }
 
+            clamped_ttff = (fix_valid && ttff_valid) ? ttff : max_gps_time_ms;
+
             CellularHelperRSSIQualResponse rssiQual = CellularHelper.getRSSIQual();
             snprintf(buf, sizeof(buf),
                      "[%lu] SoC %.1f, TTFF %lu ms, connect time %lu ms, GPS DB size %lu, "
                      "RSSI %d, qual %d.\n",
-                     millis(), fuel.getSoC(), ttff_valid ? ttff : max_gps_time_ms, connect_time_ms,
+                     millis(), fuel.getSoC(), clamped_ttff, connect_time_ms,
                      gps.nav_db_len(), rssiQual.rssi, rssiQual.qual);
             Serial.write(buf);
             snprintf(buf, sizeof(buf), "%.1f,%.1f,%.0f,%lu,%d",
                      fuel.getSoC(),
-                     (ttff_valid ? ttff : max_gps_time_ms) / 1000.0,
+                     clamped_ttff / 1000.0,
                      connect_time_ms / 1000.0,
                      gps.nav_db_len(),
                      rssiQual.rssi);

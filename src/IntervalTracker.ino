@@ -244,16 +244,15 @@ void loop() {
 
             CellularHelperRSSIQualResponse rssiQual = CellularHelper.getRSSIQual();
             snprintf(buf, sizeof(buf),
-                     "[%lu] SoC %.1f, TTFF %lu ms, connect time %lu ms, GPS DB size %lu, "
+                     "[%lu] SoC %.1f, TTFF %lu ms, connect time %lu ms, "
                      "RSSI %d, qual %d.\n",
                      millis(), fuel.getSoC(), clamped_ttff, connect_time_ms,
-                     gps.nav_db_len(), rssiQual.rssi, rssiQual.qual);
+                     rssiQual.rssi, rssiQual.qual);
             Serial.write(buf);
-            snprintf(buf, sizeof(buf), "%.1f,%.1f,%.0f,%lu,%d",
+            snprintf(buf, sizeof(buf), "%.1f,%.1f,%.0f,%d",
                      fuel.getSoC(),
                      clamped_ttff / 1000.0,
                      connect_time_ms / 1000.0,
-                     gps.nav_db_len(),
                      rssiQual.rssi);
             Particle.publish("s", buf, PRIVATE, NO_ACK);
         }

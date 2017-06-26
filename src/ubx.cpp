@@ -63,8 +63,8 @@
 
 /**** Trace macros, disable for production builds */
 #define UBX_TRACE_PARSER(s, ...)    {/*Serial.printlnf(s, ## __VA_ARGS__);*/}  /* decoding progress in parse_char() */
-#define UBX_TRACE_RXMSG(s, ...)     {/*Serial.printlnf(s, ## __VA_ARGS__);*/}  /* Rx msgs in payload_rx_done() */
-#define UBX_TRACE_NAV_DB(s, ...)    {Serial.printlnf(s, ## __VA_ARGS__);}
+#define UBX_TRACE_RXMSG(s, ...)     {Serial.printlnf(s, ## __VA_ARGS__);}  /* Rx msgs in payload_rx_done() */
+#define UBX_TRACE_CONFIG(s, ...)    {Serial.printlnf(s, ## __VA_ARGS__);}
 
 /**** Warning macros, disable to save memory */
 #define UBX_WARN(s, ...)        {Serial.printlnf(s, ## __VA_ARGS__);}
@@ -72,7 +72,6 @@
 UBX::UBX(std::function<void(uint16_t, const ubx_buf_t &)> callback) :
     _ack_state(UBX_ACK_IDLE),
     _ack_waiting_msg(0),
-    _nav_db_len(0),
     _aop_status(true),
     _callback(callback) {
 
@@ -129,9 +128,9 @@ void UBX::start() {
 
     if (!wait_for_ack(UBX_MSG_CFG_NAVX5, UBX_CONFIG_TIMEOUT)) UBX_WARN("No ack for CFG-NAVX5");
 
-    // Send navigation database and current time
+    // Send current time for use with existing AssistNow Autonomous data
     if (Time.isValid()) {
-        UBX_TRACE_NAV_DB("Sending current time");
+        UBX_TRACE_CONFIG("Sending current time");
         memset(&_buf.payload_tx_mga_ini_time_utc, 0, sizeof(_buf.payload_tx_mga_ini_time_utc));
         _buf.payload_tx_mga_ini_time_utc.type = 0x10;
         _buf.payload_tx_mga_ini_time_utc.version = 0x00;
@@ -148,17 +147,6 @@ void UBX::start() {
         _buf.payload_tx_mga_ini_time_utc.tAccNs = 999999999;
         send_message(UBX_MSG_MGA_INI_TIME_UTC, _buf.raw, sizeof(_buf.payload_tx_mga_ini_time_utc));
     }
-    if (_nav_db_len > 0) {
-        UBX_TRACE_NAV_DB("Sending %lu bytes of nav db", _nav_db_len);
-        // Send navigation database in chunks with delays to avoid overwhelming the receiver
-        for (uint16_t i = 0; i < _nav_db_len; i += 50) {
-            Serial1.write(_nav_db + i, MIN(50, _nav_db_len - i));
-            delay(10);
-        }
-        UBX_TRACE_NAV_DB("Done sending nav db", _nav_db_len);
-    }
-    // Drop any resulting acks
-    receive(100);
 
     /* configure message rates */
     /* the last argument is divisor for measurement rate (set by CFG RATE) */
@@ -183,37 +171,6 @@ void UBX::update() {
 }
 
 void UBX::stop() {
-    // Turn off all messages
-    configure_message_rate(UBX_MSG_NAV_PVT, 0);
-    if (!wait_for_ack(UBX_MSG_CFG_MSG, UBX_CONFIG_TIMEOUT)) {
-        UBX_WARN("No ack for CFG-MSG NAV-PVT off");
-    }
-
-    configure_message_rate(UBX_MSG_NAV_STATUS, 0);
-    if (!wait_for_ack(UBX_MSG_CFG_MSG, UBX_CONFIG_TIMEOUT)) {
-        UBX_WARN("No ack for CFG-MSG NAV-STATUS off");
-    }
-
-    // Wait for silence
-    receive(100);
-
-    // Request a database dump
-    send_message(UBX_MSG_MGA_DBD, nullptr, 0);
-
-    // Receive and save data until silence
-    _nav_db_len = 0;
-    unsigned long last_received = millis();
-    while (millis() < last_received + 500) {
-        while (Serial1.available() > 0) {
-            last_received = millis();
-            uint8_t c = Serial1.read();
-            if (_nav_db_len < sizeof(_nav_db)) {
-                _nav_db[_nav_db_len++] = c;
-            }
-        }
-    }
-    UBX_TRACE_NAV_DB("Received %lu bytes of nav db", _nav_db_len);
-
     // Reset the AssistNow Autonomous computation status
     _aop_status = true;
     // Wait until AssistNow Autonomous computations are done
@@ -223,7 +180,7 @@ void UBX::stop() {
     }
 
     while (_aop_status) {
-        UBX_TRACE_NAV_DB("Waiting for AOP");
+        UBX_TRACE_CONFIG("Waiting for AOP");
         receive(1000);
     }
 

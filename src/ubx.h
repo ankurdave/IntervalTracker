@@ -459,11 +459,6 @@ public:
      */
     void cold_start();
 
-    /**
-     * For diagnostics, return the size of the stored navigation database after calling stop().
-     */
-    uint16_t nav_db_len() { return _nav_db_len; }
-
 private:
     /** Parse a single byte from the u-blox receiver. */
     void parse_char(const uint8_t b);
@@ -531,9 +526,6 @@ private:
     uint8_t            _rx_ck_b;
     uint16_t           _ack_waiting_msg;
     ubx_buf_t          _buf;
-
-    uint8_t _nav_db[8192];
-    uint16_t _nav_db_len;
 
     /**
      * Status of AssistNow Autonomous computations, used to determine when to power off the

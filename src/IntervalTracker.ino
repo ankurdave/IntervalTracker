@@ -58,13 +58,10 @@ char buf[128];
 
 // GPS info
 bool fix_valid = false;
-double lat = 0.0, lon = 0.0, acc = 0.0;
+double lat = 0.0, lon = 0.0, acc = 0.0, speed_mph = 0.0;
 uint8_t num_satellites = 0;
-double speed_mph = 0;
 
-bool ttff_valid = false;
-uint32_t ttff = 0;
-unsigned long clamped_ttff;
+unsigned long ttff = 0;
 
 const double mm_per_second_per_mph = 447.04;
 
@@ -72,7 +69,9 @@ const double mm_per_second_per_mph = 447.04;
 
 void resetGPSInfo() {
     fix_valid = false;
-    ttff_valid = false;
+    lat = lon = acc = speed_mph = 0.0;
+    num_satellites = 0;
+    ttff = 0;
 }
 
 void handleGPSMessage(uint16_t msg_class_id, const ubx_buf_t &buf) {
@@ -84,10 +83,6 @@ void handleGPSMessage(uint16_t msg_class_id, const ubx_buf_t &buf) {
         acc = (double)buf.payload_rx_nav_pvt.hAcc * 1e-3;
         num_satellites = buf.payload_rx_nav_pvt.numSV;
         speed_mph = (double)buf.payload_rx_nav_pvt.gSpeed / mm_per_second_per_mph;
-        break;
-    case UBX_MSG_NAV_STATUS:
-        ttff_valid = true;
-        ttff = buf.payload_rx_nav_status.ttff;
         break;
     }
 }
@@ -108,7 +103,7 @@ void printStatus() {
             snprintf(buf, sizeof(buf),
                      "[%lu] WAIT_FOR_GPS, %f,%f~%f, %.1f mph, %u satellites, TTFF %d ms\n",
                      millis(),
-                     lat, lon, acc, speed_mph, num_satellites, ttff_valid ? ttff : 0);
+                     lat, lon, acc, speed_mph, num_satellites, ttff);
             break;
         case WAIT_FOR_CONNECT:
             snprintf(buf, sizeof(buf),
@@ -174,10 +169,12 @@ void loop() {
         break;
 
     case WAIT_FOR_GPS:
-        if ((fix_valid && ttff_valid) || millis() > gps_begin_ms + max_gps_time_ms) {
+        if (fix_valid || millis() > gps_begin_ms + max_gps_time_ms) {
 
-            if (fix_valid && ttff_valid) {
-                snprintf(buf, sizeof(buf), "[%lu] Got GPS fix.\n", millis());
+            ttff = millis() - gps_begin_ms;
+
+            if (fix_valid) {
+                snprintf(buf, sizeof(buf), "[%lu] Got GPS fix in %lu ms.\n", millis(), ttff);
                 Serial.write(buf);
             } else {
                 snprintf(buf, sizeof(buf), "[%lu] Failed to get GPS fix.\n", millis());
@@ -215,7 +212,7 @@ void loop() {
 
     case PUBLISH:
         if (Particle.connected()) {
-            if (fix_valid && ttff_valid) {
+            if (fix_valid) {
                 snprintf(buf, sizeof(buf),
                          "[%lu] Sending fix: %f,%f~%f, %.1f mph, %u satellites.\n",
                          millis(), lat, lon, acc, speed_mph, num_satellites);
@@ -240,18 +237,16 @@ void loop() {
                 Particle.publish("cl", buf, PRIVATE, NO_ACK);
             }
 
-            clamped_ttff = (fix_valid && ttff_valid) ? ttff : max_gps_time_ms;
-
             CellularHelperRSSIQualResponse rssiQual = CellularHelper.getRSSIQual();
             snprintf(buf, sizeof(buf),
                      "[%lu] SoC %.1f, TTFF %lu ms, connect time %lu ms, "
                      "RSSI %d, qual %d.\n",
-                     millis(), fuel.getSoC(), clamped_ttff, connect_time_ms,
+                     millis(), fuel.getSoC(), ttff, connect_time_ms,
                      rssiQual.rssi, rssiQual.qual);
             Serial.write(buf);
             snprintf(buf, sizeof(buf), "%.1f,%.1f,%.0f,%d",
                      fuel.getSoC(),
-                     clamped_ttff / 1000.0,
+                     ttff / 1000.0,
                      connect_time_ms / 1000.0,
                      rssiQual.rssi);
             Particle.publish("s", buf, PRIVATE, NO_ACK);

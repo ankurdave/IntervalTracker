@@ -153,9 +153,6 @@ void UBX::start() {
     configure_message_rate(UBX_MSG_NAV_PVT, 1);
     if (!wait_for_ack(UBX_MSG_CFG_MSG, UBX_CONFIG_TIMEOUT)) UBX_WARN("No ack for CFG-MSG NAV-PVT");
 
-    configure_message_rate(UBX_MSG_NAV_STATUS, 1);
-    if (!wait_for_ack(UBX_MSG_CFG_MSG, UBX_CONFIG_TIMEOUT)) UBX_WARN("No ack for CFG-MSG NAV-STATUS");
-
     // Save configuration to battery-backed RAM
     memset(&_buf.payload_tx_cfg_cfg, 0, sizeof(_buf.payload_tx_cfg_cfg));
     _buf.payload_tx_cfg_cfg.saveMask = 0x0000000B; // save ioPort, msgConf, and navConf
@@ -336,14 +333,6 @@ bool UBX::payload_rx_init() {
         }
         break;
 
-    case UBX_MSG_NAV_STATUS:
-        if (_rx_payload_length != sizeof(ubx_payload_rx_nav_status_t)) {
-            _rx_state = UBX_RXMSG_ERROR_LENGTH;
-        } else {
-            _rx_state = UBX_RXMSG_HANDLE;
-        }
-        break;
-
     case UBX_MSG_NAV_AOPSTATUS:
         if (_rx_payload_length != sizeof(ubx_payload_rx_nav_aopstatus_t)) {
             _rx_state = UBX_RXMSG_ERROR_LENGTH;
@@ -407,11 +396,6 @@ void UBX::payload_rx_done() {
     switch (_rx_msg) {
     case UBX_MSG_NAV_PVT:
         UBX_TRACE_RXMSG("Rx NAV-PVT");
-        _callback(_rx_msg, _buf);
-        break;
-
-    case UBX_MSG_NAV_STATUS:
-        UBX_TRACE_RXMSG("Rx NAV-STATUS");
         _callback(_rx_msg, _buf);
         break;
 

@@ -178,7 +178,7 @@ void UBX::stop() {
 
     while (_aop_status) {
         UBX_TRACE_CONFIG("Waiting for AOP");
-        receive(1000);
+        receive(100);
     }
 
     // Perform a clean shutdown of the receiver by requesting it to back up navigation data to
@@ -400,7 +400,7 @@ void UBX::payload_rx_done() {
         break;
 
     case UBX_MSG_NAV_AOPSTATUS:
-        UBX_TRACE_RXMSG("Rx NAV-AOPSTATUS");
+        UBX_TRACE_RXMSG("Rx NAV-AOPSTATUS %d", _buf.payload_rx_nav_aopstatus.status);
         _aop_status = (_buf.payload_rx_nav_aopstatus.status != 0);
         break;
 

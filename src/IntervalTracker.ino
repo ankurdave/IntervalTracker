@@ -4,14 +4,10 @@
  *
  * Written for the Particle Asset Tracker 3G v2 (Particle Electron, u-blox SARA-U260 cellular modem,
  * u-blox MAX-M8Q GPS receiver).
- *
- * References:
- * - [UBXProtocol] "u-blox 8 / u-blox M8 Receiver Description Including Protocol Specification".
- *   UBX-13003221.
  */
 
 #include "CellularHelper.h"
-#include "TinyGPS++.h"
+#include "ubx.h"
 
 // CONFIGURATION ===================================================================================
 
@@ -41,7 +37,7 @@ SYSTEM_THREAD(ENABLED);
 SYSTEM_MODE(MANUAL);
 
 ApplicationWatchdog wd(60000, System.reset);
-TinyGPSPlus gps;
+UBX gps(handleGPSMessage);
 FuelGauge fuel;
 
 enum State { IDLE, WAIT_FOR_GPS, WAIT_FOR_CONNECT, PUBLISH, SLEEP };
@@ -51,130 +47,44 @@ State state = IDLE;
 long last_send_unixtime = 0;
 unsigned long last_print_ms = 0;
 unsigned long gps_begin_ms = 0;
+unsigned long last_fix_time = 0;
 unsigned long connect_begin_ms = 0;
 
 // Times spent in waiting states, used for statistics reporting
-unsigned long gps_ttff_ms = 0;
 unsigned long connect_time_ms = 0;
 
 // Temporary string buffer for snprintf
-char buf[64];
+char buf[128];
 
-// -- GPS management -------------------------------------------------------------------------------
+// GPS info
+bool fix_valid = false;
+double lat = 0.0, lon = 0.0, acc = 0.0;
+uint8_t num_satellites = 0;
+double speed_mph = 0;
 
-// Backup of navigation database for persistence across GPS power cycles
-unsigned char gps_nav_database[8192];
-uint32_t gps_nav_database_length = 0;
+bool ttff_valid = false;
+uint32_t ttff = 0;
 
-// UBX commands. See protocol description in [UBXProtocol].
-// Set Serial1 input and output to UBX protocol
-static const uint8_t ubx_cfg_prt_ubx[] = {
-    0xB5,0x62,0x06,0x00,0x14,0x00,0x01,0x00,0x00,0x00,0xC0,0x08,0x00,0x00,0x80,0x25,0x00,0x00,0x01,
-    0x00,0x01,0x00,0x00,0x00,0x00,0x00,0x8A,0x79};
-// Set Serial1 input to UBX protocol and output to NMEA protocol
-static const uint8_t ubx_cfg_prt_nmea[] = {
-    0xB5,0x62,0x06,0x00,0x14,0x00,0x01,0x00,0x00,0x00,0xC0,0x08,0x00,0x00,0x80,0x25,0x00,0x00,0x01,
-    0x00,0x02,0x00,0x00,0x00,0x00,0x00,0x8B,0x7F};
-// Request navigation database
-static const uint8_t ubx_mga_dbd[] = {
-    0xB5,0x62,0x13,0x80,0x00,0x00,0x93,0xCC};
-
-void gpsOn() {
-    Serial1.begin(9600);
-    pinMode(D6, OUTPUT);
-
-    // Clear Serial1 buffer
-    while (Serial1.available() > 0) {
-		Serial1.read();
-	}
-
-    // Turn on GPS
-    digitalWrite(D6, LOW);
-
-    // Allow GPS to initialize before sending commands
-    delay(500);
-    restore_nav_database();
-}
-
-/** Parse NMEA output from GPS for fixes. */
-void updateGPS() {
-    while (Serial1.available() > 0) {
-		gps.encode(Serial1.read());
-	}
-}
-
-void gpsOff() {
-    save_nav_database();
-
-    digitalWrite(D6, HIGH);
-}
-
-/**
- * Save GPS navigation database before powering it off. See Section 11.5 of [UBXProtocol],
- * "Preserving Information During Power-Off".
- */
-void save_nav_database() {
-    snprintf(buf, sizeof(buf), "[%lu] Getting nav database\n", millis());
-    Serial.write(buf);
-
-    gps_nav_database_length = 0;
-
-    // Switch to receiving UBX messages
-    Serial1.write(ubx_cfg_prt_ubx, sizeof(ubx_cfg_prt_ubx));
-
-    // Flush leftover NMEA data and ACK from the buffer: Drop data until there is 1 second of idle
-    // time
-    unsigned long last_received = millis();
-    while (millis() < last_received + 1000) {
-        while (Serial1.available() > 0) {
-            last_received = millis();
-            Serial1.read();
-        }
-    }
-
-    // Request database
-    Serial1.write(ubx_mga_dbd, sizeof(ubx_mga_dbd));
-
-    // Save database: Read data until there is 1 second of idle time
-    last_received = millis();
-    while (millis() < last_received + 1000) {
-        while (Serial1.available() > 0) {
-            last_received = millis();
-            unsigned char c = Serial1.read();
-            if (gps_nav_database_length < sizeof(gps_nav_database)) {
-                gps_nav_database[gps_nav_database_length++] = c;
-            }
-            // Serial.printf("0x%0.2X ", c);
-            // if (gps_nav_database_length % 10 == 0) Serial.print("\n");
-        }
-    }
-
-    // Switch back to receiving NMEA
-    Serial1.write(ubx_cfg_prt_nmea, sizeof(ubx_cfg_prt_nmea));
-
-    snprintf(buf, sizeof(buf), "[%lu] Got %d bytes of database\n",
-             millis(), gps_nav_database_length);
-    Serial.write(buf);
-}
-
-/**
- * Restore GPS navigation database on start to improve cold start performance. See Section 11.5 of
- * [UBXProtocol], "Preserving Information During Power-Off".
- */
-void restore_nav_database() {
-    if (gps_nav_database_length != 0) {
-        snprintf(buf, sizeof(buf), "[%lu] Sending stored nav database to GPS\n", millis());
-        Serial.write(buf);
-
-        // Send database
-        Serial1.write(gps_nav_database, gps_nav_database_length);
-
-        snprintf(buf, sizeof(buf), "[%lu] Sent %d bytes of database\n", millis(), gps_nav_database_length);
-        Serial.write(buf);
-    }
-}
+const double mm_per_second_per_mph = 447.04;
 
 // -- Utilities ------------------------------------------------------------------------------------
+
+void handleGPSMessage(uint16_t msg_class_id, const ubx_buf_t &buf) {
+    switch (msg_class_id) {
+    case UBX_MSG_NAV_PVT:
+		fix_valid = ((buf.payload_rx_nav_pvt.flags & UBX_RX_NAV_PVT_FLAGS_GNSSFIXOK) == 1);
+		lat = (double)buf.payload_rx_nav_pvt.lat * 1e-7;
+		lon	= (double)buf.payload_rx_nav_pvt.lon * 1e-7;
+        acc = (double)buf.payload_rx_nav_pvt.hAcc * 1e-3;
+        num_satellites = buf.payload_rx_nav_pvt.numSV;
+        speed_mph = (double)buf.payload_rx_nav_pvt.gSpeed / mm_per_second_per_mph;
+        break;
+    case UBX_MSG_NAV_STATUS:
+        ttff_valid = true;
+        ttff = buf.payload_rx_nav_status.ttff;
+        break;
+    }
+}
 
 /** Print a debug message about the current state. */
 void printStatus() {
@@ -184,33 +94,31 @@ void printStatus() {
         switch (state) {
         case IDLE:
             snprintf(buf, sizeof(buf),
-                "[%lu] IDLE, time until publish %d\n",
-                millis(), last_send_unixtime + min_publish_interval_sec - Time.now());
+                     "[%lu] IDLE, time until publish %d\n",
+                     millis(), last_send_unixtime + min_publish_interval_sec - Time.now());
             Serial.write(buf);
             break;
         case WAIT_FOR_GPS:
             snprintf(buf, sizeof(buf),
-                "[%lu] WAIT_FOR_GPS, gps valid %d, gps updated %d, %d ms left\n",
-                millis(),
-                gps.location.isValid(),
-                gps.location.isUpdated(),
-                gps_begin_ms + max_gps_time_ms - millis());
+                     "[%lu] WAIT_FOR_GPS, %f,%f~%f, %.1f mph, %u satellites, TTFF %d ms\n",
+                     millis(),
+                     lat, lon, acc, speed_mph, num_satellites, ttff_valid ? ttff : 0);
             break;
         case WAIT_FOR_CONNECT:
             snprintf(buf, sizeof(buf),
-                "[%lu] WAIT_FOR_CONNECT, cell {lis %d, conn %d, ready %d}, conn %d, %d ms left\n",
-                millis(),
-                Cellular.listening(),
-                Cellular.connecting(),
-                Cellular.ready(),
-                Particle.connected(),
-                connect_begin_ms + max_connect_time_ms - millis());
+                     "[%lu] WAIT_FOR_CONNECT, cell {lis %d, conn %d, ready %d}, conn %d, %d ms left\n",
+                     millis(),
+                     Cellular.listening(),
+                     Cellular.connecting(),
+                     Cellular.ready(),
+                     Particle.connected(),
+                     connect_begin_ms + max_connect_time_ms - millis());
             break;
         case PUBLISH:
-            snprintf(buf, sizeof(buf), "[%lu] PUBLISH\n");
+            snprintf(buf, sizeof(buf), "[%lu] PUBLISH\n", millis());
             break;
         case SLEEP:
-            snprintf(buf, sizeof(buf), "[%lu] SLEEP\n");
+            snprintf(buf, sizeof(buf), "[%lu] SLEEP\n", millis());
             break;
         }
         Serial.write(buf);
@@ -237,7 +145,7 @@ void setup() {
 
 void loop() {
     wd.checkin();
-    updateGPS();
+    gps.update();
     Particle.process();
     printStatus();
 
@@ -252,27 +160,24 @@ void loop() {
             snprintf(buf, sizeof(buf), "[%lu] Starting GPS...\n", millis());
             Serial.write(buf);
             gps_begin_ms = millis();
-            gpsOn();
+            gps.start();
 
             state = WAIT_FOR_GPS;
         }
         break;
 
     case WAIT_FOR_GPS:
-        if ((gps.location.isValid() && gps.location.isUpdated())
-            || millis() > gps_begin_ms + max_gps_time_ms) {
+        if ((fix_valid && ttff_valid) || millis() > gps_begin_ms + max_gps_time_ms) {
 
-            gps_ttff_ms = millis() - gps_begin_ms;
-
-            if (gps.location.isValid() && gps.location.isUpdated()) {
-                snprintf(buf, sizeof(buf), "[%lu] Got a GPS fix. TTFF: %d ms.\n", millis(), gps_ttff_ms);
+            if (fix_valid && ttff_valid) {
+                snprintf(buf, sizeof(buf), "[%lu] Got GPS fix.\n", millis());
                 Serial.write(buf);
             } else {
                 snprintf(buf, sizeof(buf), "[%lu] Failed to get GPS fix.\n", millis());
                 Serial.write(buf);
             }
 
-            gpsOff();
+            gps.stop();
 
             snprintf(buf, sizeof(buf), "[%lu] Connecting...\n", millis());
             Serial.write(buf);
@@ -301,52 +206,52 @@ void loop() {
 
     case PUBLISH:
         if (Particle.connected()) {
-            if (gps.location.isValid() && gps.location.isUpdated()) {
-                snprintf(buf, sizeof(buf), "[%lu] Sending fix: %f,%f.\n",
-                              millis(), gps.location.lat(), gps.location.lng());
+            if (fix_valid && ttff_valid) {
+                snprintf(buf, sizeof(buf),
+                         "[%lu] Sending fix: %f,%f~%f, %.1f mph, %u satellites.\n",
+                         millis(), lat, lon, acc, speed_mph, num_satellites);
                 Serial.write(buf);
-                snprintf(buf, sizeof(buf), "%f,%f",
-                         gps.location.lat(), gps.location.lng());
+                snprintf(buf, sizeof(buf), "%f,%f,%.0f,%.0f,%u",
+                         lat, lon, acc, speed_mph, num_satellites);
                 Particle.publish("g", buf, PRIVATE, NO_ACK);
             }
 
             snprintf(buf, sizeof(buf), "[%lu] Waiting %d ms before querying cellular modem.\n",
-                          millis(), post_connect_delay_ms);
+                     millis(), post_connect_delay_ms);
             Serial.write(buf);
             appDelay(post_connect_delay_ms);
 
             CellularHelperLocationResponse cell_loc = CellularHelper.getLocation();
             if (cell_loc.valid) {
                 snprintf(buf, sizeof(buf), "[%lu] Cellular location %f,%f~%d\n",
-                              millis(), cell_loc.lat, cell_loc.lon, cell_loc.uncertainty);
+                         millis(), cell_loc.lat, cell_loc.lon, cell_loc.uncertainty);
                 Serial.write(buf);
-                snprintf(buf, sizeof(buf), "%f,%f~%d",
+                snprintf(buf, sizeof(buf), "%f,%f,%d",
                          cell_loc.lat, cell_loc.lon, cell_loc.uncertainty);
                 Particle.publish("cl", buf, PRIVATE, NO_ACK);
             }
 
             CellularHelperRSSIQualResponse rssiQual = CellularHelper.getRSSIQual();
             snprintf(buf, sizeof(buf),
-                "[%lu] SoC %.1f, TTFF %lu ms, connect time %lu ms, GPS DB size %u, "
-                "RSSI %d, qual %d.\n",
-                millis(), fuel.getSoC(), gps_ttff_ms, connect_time_ms, gps_nav_database_length,
-                rssiQual.rssi, rssiQual.qual);
+                     "[%lu] SoC %.1f, TTFF %lu ms, connect time %lu ms, GPS DB size %lu, "
+                     "RSSI %d, qual %d.\n",
+                     millis(), fuel.getSoC(), ttff_valid ? ttff : max_gps_time_ms, connect_time_ms,
+                     gps.nav_db_len(), rssiQual.rssi, rssiQual.qual);
             Serial.write(buf);
-            snprintf(buf, sizeof(buf), "soc%.1f,ttff%lu,tcon%lu,dbsz%u,rssi%d",
-                     fuel.getSoC(), gps_ttff_ms, connect_time_ms, gps_nav_database_length,
+            snprintf(buf, sizeof(buf), "%.1f,%.1f,%.0f,%lu,%d",
+                     fuel.getSoC(),
+                     (ttff_valid ? ttff : max_gps_time_ms) / 1000.0,
+                     connect_time_ms / 1000.0,
+                     gps.nav_db_len(),
                      rssiQual.rssi);
             Particle.publish("s", buf, PRIVATE, NO_ACK);
-
-            CellularHelperEnvironmentResponseStatic<8> envResp;
-            CellularHelper.getEnvironment(CellularHelper.ENVIRONMENT_SERVING_CELL, envResp);
-            envResp.logResponse();
         }
         state = SLEEP;
         break;
 
     case SLEEP:
         snprintf(buf, sizeof(buf), "[%lu] Waiting %d ms for messages to go out.\n",
-                      millis(), pre_sleep_delay_ms);
+                 millis(), pre_sleep_delay_ms);
         Serial.write(buf);
         appDelay(pre_sleep_delay_ms);
 

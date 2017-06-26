@@ -214,6 +214,19 @@ void UBX::stop() {
     }
     UBX_TRACE_NAV_DB("Received %lu bytes of nav db", _nav_db_len);
 
+    // Reset the AssistNow Autonomous computation status
+    _aop_status = true;
+    // Wait until AssistNow Autonomous computations are done
+    configure_message_rate(UBX_MSG_NAV_AOPSTATUS, 1);
+    if (!wait_for_ack(UBX_MSG_CFG_MSG, UBX_CONFIG_TIMEOUT)) {
+        UBX_WARN("No ack for CFG-MSG NAV-AOPSTATUS");
+    }
+
+    while (_aop_status) {
+        UBX_TRACE_NAV_DB("Waiting for AOP");
+        receive(1000);
+    }
+
     // Perform a clean shutdown of the receiver by requesting it to back up navigation data to
     // battery-backed RAM and shut down
     memset(&_buf.payload_tx_rxm_pmreq, 0, sizeof(_buf.payload_tx_rxm_pmreq));
@@ -368,6 +381,14 @@ bool UBX::payload_rx_init() {
 
     case UBX_MSG_NAV_STATUS:
         if (_rx_payload_length != sizeof(ubx_payload_rx_nav_status_t)) {
+            _rx_state = UBX_RXMSG_ERROR_LENGTH;
+        } else {
+            _rx_state = UBX_RXMSG_HANDLE;
+        }
+        break;
+
+    case UBX_MSG_NAV_AOPSTATUS:
+        if (_rx_payload_length != sizeof(ubx_payload_rx_nav_aopstatus_t)) {
             _rx_state = UBX_RXMSG_ERROR_LENGTH;
         } else {
             _rx_state = UBX_RXMSG_HANDLE;

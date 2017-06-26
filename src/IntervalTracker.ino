@@ -212,15 +212,13 @@ void loop() {
 
     case PUBLISH:
         if (Particle.connected()) {
-            if (fix_valid) {
-                snprintf(buf, sizeof(buf),
-                         "[%lu] Sending fix: %f,%f~%f, %.1f mph, %u satellites.\n",
-                         millis(), lat, lon, acc, speed_mph, num_satellites);
-                Serial.write(buf);
-                snprintf(buf, sizeof(buf), "%f,%f,%.0f,%.0f,%u",
-                         lat, lon, acc, speed_mph, num_satellites);
-                Particle.publish("g", buf, PRIVATE, NO_ACK);
-            }
+            snprintf(buf, sizeof(buf),
+                     "[%lu] Sending fix: %f,%f~%f, %.1f mph, %u satellites.\n",
+                     millis(), lat, lon, acc, speed_mph, num_satellites);
+            Serial.write(buf);
+            snprintf(buf, sizeof(buf), "%f,%f,%.0f,%.0f,%u",
+                     lat, lon, acc, speed_mph, num_satellites);
+            Particle.publish("g", buf, PRIVATE, NO_ACK);
 
             snprintf(buf, sizeof(buf), "[%lu] Waiting %d ms before querying cellular modem.\n",
                      millis(), post_connect_delay_ms);

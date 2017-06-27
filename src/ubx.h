@@ -467,13 +467,13 @@ private:
      * Receive input until the specified number of milliseconds of silence. Because this blocks the
      * application, it is only used during configuration.
      */
-    void receive(const unsigned long timeout);
+    void receive(const uint32_t timeout);
 
     /**
      * Wait for message acknowledgement. Return true if an ack for the given message was received.
      * Because this blocks the application, it is only used during configuration.
      */
-    bool wait_for_ack(const uint16_t msg, const unsigned long timeout);
+    bool wait_for_ack(const uint16_t msg, const uint32_t timeout);
 
     /**
      * Send a message to the UBX receiver. Used for configuration.

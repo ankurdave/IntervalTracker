@@ -204,11 +204,11 @@ void UBX::cold_start() {
     send_message(UBX_MSG_CFG_RST, _buf.raw, sizeof(_buf.payload_tx_cfg_rst));
 }
 
-bool UBX::wait_for_ack(const uint16_t msg, const unsigned long timeout) {
+bool UBX::wait_for_ack(const uint16_t msg, const uint32_t timeout) {
     _ack_state = UBX_ACK_WAITING;
     _ack_waiting_msg = msg; // memorize sent msg class&ID for ACK check
 
-    unsigned long time_started = millis();
+    uint32_t time_started = millis();
 
     while ((_ack_state == UBX_ACK_WAITING) && (millis() < time_started + timeout)) {
         receive(timeout);
@@ -219,8 +219,8 @@ bool UBX::wait_for_ack(const uint16_t msg, const unsigned long timeout) {
     return ret;
 }
 
-void UBX::receive(const unsigned long timeout) {
-    unsigned long last_received = millis();
+void UBX::receive(const uint32_t timeout) {
+    uint32_t last_received = millis();
     while (millis() < last_received + timeout) {
         while (Serial1.available() > 0) {
             last_received = millis();

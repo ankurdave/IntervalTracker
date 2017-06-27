@@ -6,27 +6,29 @@
  * u-blox MAX-M8Q GPS receiver).
  */
 
+#include <stdint.h>
+
 #include "CellularHelper.h"
 #include "ubx.h"
 
 // CONFIGURATION ===================================================================================
 
 /** Interval between location reports (s). */
-const long min_publish_interval_sec = 15 * 60;
+const int32_t min_publish_interval_sec = 15 * 60;
 /** Interval between debug messages (ms). */
-const unsigned long min_print_interval_ms = 1000;
+const uint32_t min_print_interval_ms = 1000;
 /** Timeout for acquiring a GPS fix (ms). */
-const unsigned long max_gps_time_ms = 5 * 60 * 1000;
+const uint32_t max_gps_time_ms = 5 * 60 * 1000;
 /** Timeout for connecting to the cellular network and Particle cloud (ms). */
-const unsigned long max_connect_time_ms = 3 * 60 * 1000;
+const uint32_t max_connect_time_ms = 3 * 60 * 1000;
 
 /**
  * How long after connecting to the cellular network to wait before querying the modem for location
  * and signal strength (ms).
  */
-const unsigned long post_connect_delay_ms = 15 * 1000;
+const uint32_t post_connect_delay_ms = 15 * 1000;
 /** How long to wait for published events to be sent before turning off the cellular modem. */
-const unsigned long pre_sleep_delay_ms = 5 * 1000;
+const uint32_t pre_sleep_delay_ms = 5 * 1000;
 
 // INTERNALS =======================================================================================
 
@@ -44,14 +46,14 @@ enum State { IDLE, WAIT_FOR_GPS, WAIT_FOR_CONNECT, PUBLISH, SLEEP };
 State state = IDLE;
 
 // Rate limiting and timeout variables
-long last_send_unixtime = 0;
-unsigned long last_print_ms = 0;
-unsigned long gps_begin_ms = 0;
-unsigned long last_fix_time = 0;
-unsigned long connect_begin_ms = 0;
+int32_t last_send_unixtime = 0;
+uint32_t last_print_ms = 0;
+uint32_t gps_begin_ms = 0;
+uint32_t last_fix_time = 0;
+uint32_t connect_begin_ms = 0;
 
 // Times spent in waiting states, used for statistics reporting
-unsigned long connect_time_ms = 0;
+uint32_t connect_time_ms = 0;
 
 // Temporary string buffer for snprintf
 char buf[128];
@@ -61,7 +63,7 @@ bool fix_valid = false;
 double lat = 0.0, lon = 0.0, acc = 0.0, speed_mph = 0.0;
 uint8_t num_satellites = 0;
 
-unsigned long ttff = 0;
+uint32_t ttff = 0;
 
 const double mm_per_second_per_mph = 447.04;
 
@@ -127,8 +129,8 @@ void printStatus() {
 }
 
 /** Delay for the specified time while maintaining regular services. */
-void appDelay(unsigned long delay_ms) {
-    unsigned long wait_begin = millis();
+void appDelay(uint32_t delay_ms) {
+    uint32_t wait_begin = millis();
     while (millis() < wait_begin + delay_ms) {
         wd.checkin();
         Particle.process();
@@ -262,7 +264,7 @@ void loop() {
         Serial.write(buf);
         Cellular.off();
 
-        long sleep_time_sec = (last_send_unixtime == 0)
+        int32_t sleep_time_sec = (last_send_unixtime == 0)
             ? min_publish_interval_sec
             : (last_send_unixtime + min_publish_interval_sec - Time.now());
         if (sleep_time_sec < 0) {

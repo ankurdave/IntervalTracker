@@ -30,6 +30,9 @@ const uint32_t post_connect_delay_ms = 15 * 1000;
 /** How long to wait for published events to be sent before turning off the cellular modem. */
 const uint32_t pre_sleep_delay_ms = 5 * 1000;
 
+// Use the AT&T IoT network
+STARTUP(cellular_credentials_set("m2m.com.attz", "", "", NULL));
+
 // INTERNALS =======================================================================================
 
 // -- SETUP ----------------------------------------------------------------------------------------
@@ -189,6 +192,7 @@ void loop() {
             connect_begin_ms = millis();
             Cellular.on();
             Particle.connect();
+            Particle.keepAlive(30); // Higher frequency keepalives for AT&T IoT network
             state = WAIT_FOR_CONNECT;
         }
         break;

@@ -278,12 +278,14 @@ void loop() {
         state = IDLE;
         delay(5000); // Wait for the last few serial messages to send and the cellular modem to turn
                      // off
-        // A5 is a dummy pin that should not trigger a wakeup
-        pinMode(A5, INPUT);
+
+        fuel.sleep();
         // We only pause the controller instead of using SLEEP_MODE_DEEP because the latter causes
         // intermittent hanging on wake:
         // https://community.particle.io/t/gps-causes-hanging-on-wake-from-sleep-mode-deep/33946
+        // A5 is a dummy pin that should not change state
         System.sleep(A5, RISING, SLEEP_NETWORK_STANDBY, sleep_time_sec);
+        fuel.wakeup();
         state = IDLE;
         break;
     }

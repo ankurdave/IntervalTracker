@@ -97,19 +97,19 @@ void printStatus() {
         switch (state) {
         case IDLE:
             snprintf(buf, sizeof(buf),
-                     "[%lu] IDLE, time until publish %d\n",
+                     "[%lu] IDLE, time until publish %ld\n",
                      millis(), last_send_unixtime + min_publish_interval_sec - Time.now());
             Serial.write(buf);
             break;
         case WAIT_FOR_GPS:
             snprintf(buf, sizeof(buf),
-                     "[%lu] WAIT_FOR_GPS, %f,%f~%f, %.1f mph, %u satellites, TTFF %d ms\n",
+                     "[%lu] WAIT_FOR_GPS, %f,%f~%f, %.1f mph, %u satellites, TTFF %lu ms\n",
                      millis(),
                      lat, lon, acc, speed_mph, num_satellites, ttff);
             break;
         case WAIT_FOR_CONNECT:
             snprintf(buf, sizeof(buf),
-                     "[%lu] WAIT_FOR_CONNECT, cell {lis %d, conn %d, ready %d}, conn %d, %d ms left\n",
+                     "[%lu] WAIT_FOR_CONNECT, cell {lis %d, conn %d, ready %d}, conn %d, %lu ms left\n",
                      millis(),
                      Cellular.listening(),
                      Cellular.connecting(),
@@ -199,7 +199,7 @@ void loop() {
     case WAIT_FOR_CONNECT:
         if (Particle.connected()) {
             connect_time_ms = millis() - connect_begin_ms;
-            snprintf(buf, sizeof(buf), "[%lu] Connected in %d ms.\n", millis(), connect_time_ms);
+            snprintf(buf, sizeof(buf), "[%lu] Connected in %lu ms.\n", millis(), connect_time_ms);
             Serial.write(buf);
 
             state = PUBLISH;
@@ -222,7 +222,7 @@ void loop() {
                      lat, lon, acc, speed_mph, num_satellites);
             Particle.publish("g", buf, PRIVATE, NO_ACK);
 
-            snprintf(buf, sizeof(buf), "[%lu] Waiting %d ms before querying cellular modem.\n",
+            snprintf(buf, sizeof(buf), "[%lu] Waiting %lu ms before querying cellular modem.\n",
                      millis(), post_connect_delay_ms);
             Serial.write(buf);
             appDelay(post_connect_delay_ms);
@@ -255,7 +255,7 @@ void loop() {
         break;
 
     case SLEEP:
-        snprintf(buf, sizeof(buf), "[%lu] Waiting %d ms for messages to go out.\n",
+        snprintf(buf, sizeof(buf), "[%lu] Waiting %lu ms for messages to go out.\n",
                  millis(), pre_sleep_delay_ms);
         Serial.write(buf);
         appDelay(pre_sleep_delay_ms);
@@ -273,7 +273,8 @@ void loop() {
         if (sleep_time_sec > min_publish_interval_sec) {
             sleep_time_sec = min_publish_interval_sec;
         }
-        snprintf(buf, sizeof(buf), "[%lu] Pausing microcontroller for %d seconds.\n", millis(), sleep_time_sec);
+        snprintf(buf, sizeof(buf), "[%lu] Pausing microcontroller for %ld seconds.\n",
+                 millis(), sleep_time_sec);
         Serial.write(buf);
         state = IDLE;
         delay(5000); // Wait for the last few serial messages to send and the cellular modem to turn

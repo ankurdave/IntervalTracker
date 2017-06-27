@@ -51,6 +51,8 @@
 #include <functional>
 #include <stdint.h>
 
+#include "CellularHelper.h"
+
 #ifndef UBX_H_
 #define UBX_H_
 
@@ -135,6 +137,10 @@
                                            * <4g
                                            */
 #define UBX_TX_CFG_NAV5_FIXMODE    3      /** 1 2D only, 2 3D only, 3 Auto 2D/3D */
+
+// AssistNow
+static const char ASSISTNOW_DOMAIN[] = "online-live1.services.u-blox.com";
+static const int32_t ASSISTNOW_FETCH_INTERVAL_S = 60 * 60;
 
 /*** u-blox protocol binary message and payload definitions ***/
 #pragma pack(push, 1)
@@ -459,6 +465,11 @@ public:
      */
     void cold_start();
 
+    /**
+     * If needed, request assistance from the AssistNow server over the cellular network.
+     */
+    void assist(CellularHelperLocationResponse &cell_loc);
+
 private:
     /** Parse a single byte from the u-blox receiver. */
     void parse_char(const uint8_t b);
@@ -533,6 +544,10 @@ private:
      * known to be idle.
      */
     bool _aop_status;
+
+    int32_t _last_assistnow_fetch_unixtime;
+    IPAddress _assistnow_ip;
+
 
     std::function<void(uint16_t, const ubx_buf_t &)> _callback;
 };

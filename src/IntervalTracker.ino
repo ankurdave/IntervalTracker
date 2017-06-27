@@ -133,6 +133,7 @@ void appDelay(uint32_t delay_ms) {
     uint32_t wait_begin = millis();
     while (millis() < wait_begin + delay_ms) {
         wd.checkin();
+        gps.update();
         Particle.process();
         printStatus();
     }
@@ -183,10 +184,6 @@ void loop() {
                 Serial.write(buf);
             }
 
-            snprintf(buf, sizeof(buf), "[%lu] Stopping GPS.\n", millis());
-            Serial.write(buf);
-            gps.stop();
-
             snprintf(buf, sizeof(buf), "[%lu] Connecting...\n", millis());
             Serial.write(buf);
             connect_begin_ms = millis();
@@ -214,14 +211,6 @@ void loop() {
 
     case PUBLISH:
         if (Particle.connected()) {
-            snprintf(buf, sizeof(buf),
-                     "[%lu] Sending fix: %f,%f~%f, %.1f mph, %u satellites.\n",
-                     millis(), lat, lon, acc, speed_mph, num_satellites);
-            Serial.write(buf);
-            snprintf(buf, sizeof(buf), "%f,%f,%.0f,%.0f,%u",
-                     lat, lon, acc, speed_mph, num_satellites);
-            Particle.publish("g", buf, PRIVATE, NO_ACK);
-
             snprintf(buf, sizeof(buf), "[%lu] Waiting %lu ms before querying cellular modem.\n",
                      millis(), post_connect_delay_ms);
             Serial.write(buf);
@@ -250,6 +239,16 @@ void loop() {
                      connect_time_ms / 1000.0,
                      rssiQual.rssi);
             Particle.publish("s", buf, PRIVATE, NO_ACK);
+
+            gps.assist(cell_loc);
+
+            snprintf(buf, sizeof(buf),
+                     "[%lu] Sending fix: %f,%f~%f, %.1f mph, %u satellites.\n",
+                     millis(), lat, lon, acc, speed_mph, num_satellites);
+            Serial.write(buf);
+            snprintf(buf, sizeof(buf), "%f,%f,%.0f,%.0f,%u",
+                     lat, lon, acc, speed_mph, num_satellites);
+            Particle.publish("g", buf, PRIVATE, NO_ACK);
         }
         state = SLEEP;
         break;
@@ -263,6 +262,10 @@ void loop() {
         snprintf(buf, sizeof(buf), "[%lu] Turning cellular off.\n", millis());
         Serial.write(buf);
         Cellular.off();
+
+        snprintf(buf, sizeof(buf), "[%lu] Stopping GPS.\n", millis());
+        Serial.write(buf);
+        gps.stop();
 
         int32_t sleep_time_sec = (last_send_unixtime == 0)
             ? min_publish_interval_sec

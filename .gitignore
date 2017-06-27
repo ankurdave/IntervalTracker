@@ -1,3 +1,4 @@
 /*.bin
 /lib
 /target
+/src/secrets.h

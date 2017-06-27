@@ -54,6 +54,7 @@
 #include <math.h>
 #include <string.h>
 #include "Particle.h"
+#include "secrets.h"
 
 #include "ubx.h"
 
@@ -65,6 +66,7 @@
 #define UBX_TRACE_PARSER(s, ...)    {/*Serial.printlnf(s, ## __VA_ARGS__);*/}  /* decoding progress in parse_char() */
 #define UBX_TRACE_RXMSG(s, ...)     {Serial.printlnf(s, ## __VA_ARGS__);}  /* Rx msgs in payload_rx_done() */
 #define UBX_TRACE_CONFIG(s, ...)    {Serial.printlnf(s, ## __VA_ARGS__);}
+#define UBX_TRACE_ASSIST(s, ...)    {Serial.printlnf(s, ## __VA_ARGS__);}
 
 /**** Warning macros, disable to save memory */
 #define UBX_WARN(s, ...)        {Serial.printlnf(s, ## __VA_ARGS__);}
@@ -73,6 +75,8 @@ UBX::UBX(std::function<void(uint16_t, const ubx_buf_t &)> callback) :
     _ack_state(UBX_ACK_IDLE),
     _ack_waiting_msg(0),
     _aop_status(true),
+    _last_assistnow_fetch_unixtime(0),
+    _assistnow_ip(),
     _callback(callback) {
 
     decode_init();
@@ -202,6 +206,84 @@ void UBX::cold_start() {
     _buf.payload_tx_cfg_rst.resetMode = 0x02;
 
     send_message(UBX_MSG_CFG_RST, _buf.raw, sizeof(_buf.payload_tx_cfg_rst));
+}
+
+void UBX::assist(CellularHelperLocationResponse &cell_loc) {
+    if (!Particle.connected()) return;
+
+    if (_last_assistnow_fetch_unixtime == 0
+        || Time.now() > _last_assistnow_fetch_unixtime + ASSISTNOW_FETCH_INTERVAL_S) {
+        UBX_TRACE_ASSIST("Time to fetch AssistNow");
+        if (!_assistnow_ip) {
+            UBX_TRACE_ASSIST("Resolving AssistNow domain");
+            _assistnow_ip = Cellular.resolve(ASSISTNOW_DOMAIN);
+        }
+
+        if (_assistnow_ip) {
+            TCPClient client;
+            UBX_TRACE_ASSIST("Connecting to AssistNow");
+            if (client.connect(_assistnow_ip, 80)) {
+                client.printf(
+                    "GET /GetOnlineData.ashx?"
+                    "token=%s;gnss=gps,glo;datatype=eph,alm,aux,pos;"
+                    "lat=%f;lon=%f;alt=%f;pacc=%f;filteronpos; HTTP/1.1\n",
+                    ASSISTNOW_TOKEN,
+                    cell_loc.lat, cell_loc.lon, cell_loc.alt,
+                    cell_loc.valid ? cell_loc.uncertainty : 6000000);
+                client.printf("Host: %s\n\n", ASSISTNOW_DOMAIN);
+
+                UBX_TRACE_ASSIST("Sent request:");
+                UBX_TRACE_ASSIST("GET /GetOnlineData.ashx?"
+                                 "token=%s;datatype=eph,alm,aux,pos;"
+                                 "lat=%f;lon=%f;alt=%d;pacc=%d;filteronpos; HTTP/1.1\n",
+                                 ASSISTNOW_TOKEN,
+                                 cell_loc.lat, cell_loc.lon, cell_loc.alt,
+                                 cell_loc.valid ? cell_loc.uncertainty : 6000000);
+                UBX_TRACE_ASSIST("Host: %s\n\n", ASSISTNOW_DOMAIN);
+
+                UBX_TRACE_ASSIST("Waiting for AssistNow response");
+                uint32_t last_received = millis();
+                const uint32_t timeout = 10000;
+                uint32_t response_size = 0;
+                // Find HTTP response body (all content after the first double newline) and forward
+                // it to the receiver
+                uint8_t num_newlines_seen = 0;
+                while (client.connected() && millis() < last_received + timeout) {
+                    while (client.available() > 0) {
+                        last_received = millis();
+                        char c = client.read();
+
+                        if (num_newlines_seen != 2) {
+                            Serial.write(c);
+                        }
+
+                        if (num_newlines_seen == 2) {
+                            Serial1.write(c);
+                            ++response_size;
+                        } else if (c == '\n') {
+                            ++num_newlines_seen;
+                        } else if (c != '\r') {
+                            num_newlines_seen = 0;
+                        }
+                    }
+
+                    // Process messages from receiver while waiting
+                    update();
+                }
+                client.stop();
+                UBX_TRACE_ASSIST("Forwarded %lu bytes of AssistNow to receiver", response_size);
+
+                _last_assistnow_fetch_unixtime = Time.now();
+            } else {
+                UBX_TRACE_ASSIST("Failed to connect to AssistNow");
+            }
+        } else {
+            UBX_TRACE_ASSIST("Failed to resolve AssistNow domain");
+        }
+    } else {
+        UBX_TRACE_ASSIST("Skipping AssistNow fetch; %d seconds until next fetch",
+                         _last_assistnow_fetch_unixtime + ASSISTNOW_FETCH_INTERVAL_S - Time.now());
+    }
 }
 
 bool UBX::wait_for_ack(const uint16_t msg, const uint32_t timeout) {

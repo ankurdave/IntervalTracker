@@ -9,7 +9,10 @@
 #include <stdint.h>
 
 #include "CellularHelper.h"
+#include "Particle.h"
 #include "ubx.h"
+
+void handleGPSMessage(uint16_t msg_class_id, const ubx_buf_t &buf);
 
 // CONFIGURATION ===================================================================================
 

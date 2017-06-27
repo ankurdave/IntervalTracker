@@ -132,26 +132,6 @@ void UBX::start() {
 
     if (!wait_for_ack(UBX_MSG_CFG_NAVX5, UBX_CONFIG_TIMEOUT)) UBX_WARN("No ack for CFG-NAVX5");
 
-    // Send current time for use with existing AssistNow Autonomous data
-    if (Time.isValid()) {
-        UBX_TRACE_CONFIG("Sending current time");
-        memset(&_buf.payload_tx_mga_ini_time_utc, 0, sizeof(_buf.payload_tx_mga_ini_time_utc));
-        _buf.payload_tx_mga_ini_time_utc.type = 0x10;
-        _buf.payload_tx_mga_ini_time_utc.version = 0x00;
-        _buf.payload_tx_mga_ini_time_utc.ref = 0x00;
-        // Leap seconds since 1980, from https://www.ietf.org/timezones/data/leap-seconds.list
-        _buf.payload_tx_mga_ini_time_utc.leapSecs = 18;
-        _buf.payload_tx_mga_ini_time_utc.year = Time.year();
-        _buf.payload_tx_mga_ini_time_utc.month = Time.month();
-        _buf.payload_tx_mga_ini_time_utc.day = Time.day();
-        _buf.payload_tx_mga_ini_time_utc.hour = Time.hour();
-        _buf.payload_tx_mga_ini_time_utc.minute = Time.minute();
-        _buf.payload_tx_mga_ini_time_utc.second = Time.second();
-        _buf.payload_tx_mga_ini_time_utc.tAccS = 1;
-        _buf.payload_tx_mga_ini_time_utc.tAccNs = 999999999;
-        send_message(UBX_MSG_MGA_INI_TIME_UTC, _buf.raw, sizeof(_buf.payload_tx_mga_ini_time_utc));
-    }
-
     /* configure message rates */
     /* the last argument is divisor for measurement rate (set by CFG RATE) */
     configure_message_rate(UBX_MSG_NAV_PVT, 1);

@@ -175,7 +175,9 @@ void loop() {
             // Fall back to cellular location
             APP_TRACE("[%lu] Failed to get GPS fix. Requesting CellLocate.\n", millis());
 
+            checkin();
             CellularHelperLocationResponse cell_loc = CellularHelper.getLocation();
+            checkin();
             if (cell_loc.valid) {
                 APP_TRACE("[%lu] Publishing cellular location %f,%f~%d\n",
                           millis(), cell_loc.lat, cell_loc.lon, cell_loc.uncertainty);
@@ -210,7 +212,9 @@ void loop() {
 
         APP_TRACE("[%lu] Waiting %lu ms for messages to go out.\n",
                   millis(), pad_delay_ms);
+        checkin();
         delay(pad_delay_ms);
+        checkin();
     } else {
         APP_TRACE("[%lu] Failed to connect.\n", millis());
     }

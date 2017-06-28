@@ -111,6 +111,7 @@ void handleGPSMessage(uint16_t msg_class_id, const ubx_buf_t &buf) {
     while (!(cond)) { \
         checkin(); \
         PRINT_STATUS(s, ## __VA_ARGS__); \
+        delay(1); \
     }}
 
 void checkin() {

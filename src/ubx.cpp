@@ -162,7 +162,7 @@ void UBX::stop() {
     }
 
     while (_aop_status) {
-        UBX_TRACE_CONFIG("Waiting for AOP");
+        UBX_TRACE_CONFIG("[%lu] Waiting for AOP", millis());
         receive(100);
     }
 
@@ -194,15 +194,16 @@ void UBX::assist(CellularHelperLocationResponse &cell_loc) {
 
     if (_last_assistnow_fetch_unixtime == 0
         || Time.now() > _last_assistnow_fetch_unixtime + ASSISTNOW_FETCH_INTERVAL_S) {
-        UBX_TRACE_ASSIST("Time to fetch AssistNow");
+        UBX_TRACE_ASSIST("[%lu] Time to fetch AssistNow", millis());
+
         if (!_assistnow_ip) {
-            UBX_TRACE_ASSIST("Resolving AssistNow domain");
+            UBX_TRACE_ASSIST("[%lu] Resolving AssistNow domain", millis());
             _assistnow_ip = Cellular.resolve(ASSISTNOW_DOMAIN);
         }
 
         if (_assistnow_ip) {
             TCPClient client;
-            UBX_TRACE_ASSIST("Connecting to AssistNow");
+            UBX_TRACE_ASSIST("[%lu] Connecting to AssistNow", millis());
             if (client.connect(_assistnow_ip, 80)) {
                 client.printf(
                     "GET /GetOnlineData.ashx?"
@@ -213,16 +214,16 @@ void UBX::assist(CellularHelperLocationResponse &cell_loc) {
                     cell_loc.valid ? cell_loc.uncertainty : 6000000);
                 client.printf("Host: %s\n\n", ASSISTNOW_DOMAIN);
 
-                UBX_TRACE_ASSIST("Sent request:");
-                UBX_TRACE_ASSIST("GET /GetOnlineData.ashx?"
+                UBX_TRACE_ASSIST("[%lu] Sent request:", millis());
+                UBX_TRACE_ASSIST("[%lu] GET /GetOnlineData.ashx?"
                                  "token=%s;datatype=eph,alm,aux,pos;"
-                                 "lat=%f;lon=%f;alt=%d;pacc=%d;filteronpos; HTTP/1.1\n",
-                                 ASSISTNOW_TOKEN,
+                                 "lat=%f;lon=%f;alt=%d;pacc=%d;filteronpos; HTTP/1.1",
+                                 millis(), ASSISTNOW_TOKEN,
                                  cell_loc.lat, cell_loc.lon, cell_loc.alt,
                                  cell_loc.valid ? cell_loc.uncertainty : 6000000);
-                UBX_TRACE_ASSIST("Host: %s\n\n", ASSISTNOW_DOMAIN);
+                UBX_TRACE_ASSIST("[%lu] Host: %s", millis(), ASSISTNOW_DOMAIN);
 
-                UBX_TRACE_ASSIST("Waiting for AssistNow response");
+                UBX_TRACE_ASSIST("[%lu] Waiting for AssistNow response", millis());
                 uint32_t last_received = millis();
                 const uint32_t timeout = 10000;
                 uint32_t response_size = 0;
@@ -252,17 +253,17 @@ void UBX::assist(CellularHelperLocationResponse &cell_loc) {
                     update();
                 }
                 client.stop();
-                UBX_TRACE_ASSIST("Forwarded %lu bytes of AssistNow to receiver", response_size);
+                UBX_TRACE_ASSIST("[%lu] Forwarded %lu bytes of AssistNow to receiver", millis(), response_size);
 
                 _last_assistnow_fetch_unixtime = Time.now();
             } else {
-                UBX_TRACE_ASSIST("Failed to connect to AssistNow");
+                UBX_TRACE_ASSIST("[%lu] Failed to connect to AssistNow", millis());
             }
         } else {
-            UBX_TRACE_ASSIST("Failed to resolve AssistNow domain");
+            UBX_TRACE_ASSIST("[%lu] Failed to resolve AssistNow domain", millis());
         }
     } else {
-        UBX_TRACE_ASSIST("Skipping AssistNow fetch; %d seconds until next fetch",
+        UBX_TRACE_ASSIST("[%lu] Skipping AssistNow fetch; %d seconds until next fetch", millis(),
                          _last_assistnow_fetch_unixtime + ASSISTNOW_FETCH_INTERVAL_S - Time.now());
     }
 }
@@ -471,17 +472,17 @@ void UBX::payload_rx_done() {
     // handle message
     switch (_rx_msg) {
     case UBX_MSG_NAV_PVT:
-        UBX_TRACE_RXMSG("Rx NAV-PVT");
+        UBX_TRACE_RXMSG("[%lu] Rx NAV-PVT", millis());
         _callback(_rx_msg, _buf);
         break;
 
     case UBX_MSG_NAV_AOPSTATUS:
-        UBX_TRACE_RXMSG("Rx NAV-AOPSTATUS %d", _buf.payload_rx_nav_aopstatus.status);
+        UBX_TRACE_RXMSG("[%lu] Rx NAV-AOPSTATUS %d", millis(), _buf.payload_rx_nav_aopstatus.status);
         _aop_status = (_buf.payload_rx_nav_aopstatus.status != 0);
         break;
 
     case UBX_MSG_ACK_ACK:
-        UBX_TRACE_RXMSG("Rx ACK-ACK");
+        UBX_TRACE_RXMSG("[%lu] Rx ACK-ACK", millis());
 
         if ((_ack_state == UBX_ACK_WAITING) && (_buf.payload_rx_ack_ack.msg == _ack_waiting_msg)) {
             _ack_state = UBX_ACK_GOT_ACK;
@@ -489,7 +490,7 @@ void UBX::payload_rx_done() {
         break;
 
     case UBX_MSG_ACK_NAK:
-        UBX_TRACE_RXMSG("Rx ACK-NAK");
+        UBX_TRACE_RXMSG("[%lu] Rx ACK-NAK", millis());
 
         if ((_ack_state == UBX_ACK_WAITING) && (_buf.payload_rx_ack_ack.msg == _ack_waiting_msg)) {
             _ack_state = UBX_ACK_GOT_NAK;

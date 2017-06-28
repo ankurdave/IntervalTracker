@@ -189,6 +189,9 @@ void loop() {
         }
 
         // Publish GPS location even if it does not meet acceptability criteria
+        if (ttff == 0) {
+            ttff = millis() - gps_begin_ms;
+        }
         APP_TRACE("[%lu] Publishing GPS location: %f,%f~%f, %.1f mph, %u satellites.\n",
                  millis(), lat, lon, acc, speed_mph, num_satellites);
         snprintf(buf, sizeof(buf), "%f,%f,%.0f,%.0f,%u",

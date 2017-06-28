@@ -452,6 +452,7 @@ public:
 
     /**
      * Read buffered input data from the u-blox receiver and invoke the callback on new messages.
+     * Does not block.
      */
     void update();
 
@@ -466,7 +467,8 @@ public:
     void cold_start();
 
     /**
-     * If needed, request assistance from the AssistNow server over the cellular network.
+     * If needed, request assistance from the AssistNow server over the cellular network. Blocks
+     * until assistance is received.
      */
     void assist(CellularHelperLocationResponse &cell_loc);
 
@@ -475,14 +477,17 @@ private:
     void parse_char(const uint8_t b);
 
     /**
-     * Receive input until the specified number of milliseconds of silence. Because this blocks the
-     * application, it is only used during configuration.
+     * Receive an input packet or the specified number of milliseconds of silence.
      */
     void receive(const uint32_t timeout);
 
     /**
+     * Wait for the specified number of milliseconds of silence.
+     */
+    void wait_for_silence(const uint32_t timeout);
+
+    /**
      * Wait for message acknowledgement. Return true if an ack for the given message was received.
-     * Because this blocks the application, it is only used during configuration.
      */
     bool wait_for_ack(const uint16_t msg, const uint32_t timeout);
 

@@ -58,7 +58,8 @@
 
 #include "ubx.h"
 
-#define UBX_CONFIG_TIMEOUT  500     // ms, timeout for waiting ACK
+#define UBX_CONFIG_TIMEOUT  200     // ms, timeout for waiting on an ACK
+#define UBX_PACKET_TIMEOUT	2		// ms, timeout for waiting on further data once some data has been received
 
 #define MIN(X,Y)    ((X) < (Y) ? (X) : (Y))
 
@@ -92,7 +93,7 @@ void UBX::start() {
 
     /* flush input and wait for at least 100 ms silence */
     decode_init();
-    receive(100);
+    wait_for_silence(100);
     decode_init();
 
     /* Send a CFG-PRT message to set the UBX protocol for in and out */
@@ -174,7 +175,7 @@ void UBX::stop() {
     send_message(UBX_MSG_RXM_PMREQ, _buf.raw, sizeof(_buf.payload_tx_rxm_pmreq));
 
     // Wait for silence
-    receive(100);
+    wait_for_silence(100);
 
     // Power off the receiver
     digitalWrite(D6, HIGH);
@@ -281,7 +282,20 @@ bool UBX::wait_for_ack(const uint16_t msg, const uint32_t timeout) {
     return ret;
 }
 
-void UBX::receive(const uint32_t timeout) {
+void UBX::receive(const uint32_t max_timeout) {
+    uint32_t timeout = max_timeout;
+
+    uint32_t last_received = millis();
+    while (millis() < last_received + timeout) {
+        while (Serial1.available() > 0) {
+            last_received = millis();
+            timeout = UBX_PACKET_TIMEOUT;
+            parse_char(Serial1.read());
+        }
+    }
+}
+
+void UBX::wait_for_silence(const uint32_t timeout) {
     uint32_t last_received = millis();
     while (millis() < last_received + timeout) {
         while (Serial1.available() > 0) {

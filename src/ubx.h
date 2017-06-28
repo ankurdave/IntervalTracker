@@ -470,7 +470,7 @@ public:
      * If needed, request assistance from the AssistNow server over the cellular network. Blocks
      * until assistance is received.
      */
-    void assist(CellularHelperLocationResponse &cell_loc);
+    void assist();
 
 private:
     /** Parse a single byte from the u-blox receiver. */

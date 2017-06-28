@@ -12,7 +12,12 @@
 #include "Particle.h"
 #include "ubx.h"
 
-void handleGPSMessage(uint16_t msg_class_id, const ubx_buf_t &buf);
+// Use the AT&T IoT network
+STARTUP(cellular_credentials_set("m2m.com.attz", "", "", NULL));
+
+// Threading is required to be able to time out connecting to the cellular network
+SYSTEM_THREAD(ENABLED);
+SYSTEM_MODE(MANUAL);
 
 // CONFIGURATION ===================================================================================
 
@@ -20,48 +25,39 @@ void handleGPSMessage(uint16_t msg_class_id, const ubx_buf_t &buf);
 const int32_t min_publish_interval_sec = 15 * 60;
 /** Interval between debug messages (ms). */
 const uint32_t min_print_interval_ms = 1000;
-/** Timeout for acquiring a GPS fix before providing assistance (ms). */
-const uint32_t max_gps_time_ms = 60 * 1000;
-/** Timeout for acquiring a GPS fix after providing assistance (ms). */
-const uint32_t max_gps_post_assist_time_ms = 60 * 1000;
 /** Timeout for connecting to the cellular network and Particle cloud (ms). */
 const uint32_t max_connect_time_ms = 3 * 60 * 1000;
-
 /**
- * How long after connecting to the cellular network to wait before querying the modem for location
- * and signal strength (ms).
+ * Timeout for acquiring a GPS fix (ms). Must be greater than max_connect_time if assistance is to
+ * have immediate benefit.
  */
-const uint32_t post_connect_delay_ms = 15 * 1000;
-/** How long to wait for published events to be sent before turning off the cellular modem. */
-const uint32_t pre_sleep_delay_ms = 5 * 1000;
-
-// Use the AT&T IoT network
-STARTUP(cellular_credentials_set("m2m.com.attz", "", "", NULL));
+const uint32_t max_gps_time_ms = 5 * 60 * 1000;
+/**
+ * Padding time before turning cellular and microprocessor off (ms). This allows published events to
+ * be sent and the cellular modem to be stopped properly. Without it, the system sometimes wakes up
+ * quickly after being put to sleep.
+ */
+const uint32_t pad_delay_ms = 2000;
 
 // INTERNALS =======================================================================================
 
 // -- SETUP ----------------------------------------------------------------------------------------
 
-// Threading is required to be able to time out connecting to the cellular network
-SYSTEM_THREAD(ENABLED);
-SYSTEM_MODE(MANUAL);
+void handleGPSMessage(uint16_t msg_class_id, const ubx_buf_t &buf);
 
 ApplicationWatchdog wd(60000, System.reset);
 UBX gps(handleGPSMessage);
 FuelGauge fuel;
 
-enum State { IDLE, WAIT_FOR_GPS, WAIT_FOR_CONNECT, PUBLISH, SLEEP };
-State state = IDLE;
-
 // Rate limiting and timeout variables
 int32_t last_send_unixtime = 0;
 uint32_t last_print_ms = 0;
 uint32_t gps_begin_ms = 0;
-uint32_t last_fix_time = 0;
 uint32_t connect_begin_ms = 0;
 
 // Times spent in waiting states, used for statistics reporting
 uint32_t connect_time_ms = 0;
+uint32_t ttff = 0;
 
 // Temporary string buffer for snprintf
 char buf[128];
@@ -70,9 +66,6 @@ char buf[128];
 bool fix_valid = false;
 double lat = 0.0, lon = 0.0, acc = 0.0, speed_mph = 0.0;
 uint8_t num_satellites = 0;
-
-uint32_t ttff = 0;
-
 const double mm_per_second_per_mph = 447.04;
 
 // -- Utilities ------------------------------------------------------------------------------------
@@ -93,228 +86,157 @@ void handleGPSMessage(uint16_t msg_class_id, const ubx_buf_t &buf) {
         acc = (double)buf.payload_rx_nav_pvt.hAcc * 1e-3;
         num_satellites = buf.payload_rx_nav_pvt.numSV;
         speed_mph = (double)buf.payload_rx_nav_pvt.gSpeed / mm_per_second_per_mph;
+
+        if (ttff == 0 && fix_valid) {
+            ttff = millis() - gps_begin_ms;
+        }
         break;
     }
 }
 
-/** Print a debug message about the current state. */
-void printStatus() {
-    if (last_print_ms == 0 || millis() > last_print_ms + min_print_interval_ms) {
-        last_print_ms = millis();
+/** Print a rate-limited debug message. */
+#define PRINT_STATUS(s, ...) { \
+    if (last_print_ms == 0 || millis() > last_print_ms + min_print_interval_ms) { \
+        last_print_ms = millis(); \
+        snprintf(buf, sizeof(buf), s, ## __VA_ARGS__); \
+        Serial.write(buf); \
+    }}
 
-        switch (state) {
-        case IDLE:
-            snprintf(buf, sizeof(buf),
-                     "[%lu] IDLE, time until publish %ld\n",
-                     millis(), last_send_unixtime + min_publish_interval_sec - Time.now());
-            Serial.write(buf);
-            break;
-        case WAIT_FOR_GPS:
-            snprintf(buf, sizeof(buf),
-                     "[%lu] WAIT_FOR_GPS, %f,%f~%f, %.1f mph, %u satellites, TTFF %lu ms\n",
-                     millis(),
-                     lat, lon, acc, speed_mph, num_satellites, ttff);
-            break;
-        case WAIT_FOR_CONNECT:
-            snprintf(buf, sizeof(buf),
-                     "[%lu] WAIT_FOR_CONNECT, cell {lis %d, conn %d, ready %d}, conn %d, %lu ms left\n",
-                     millis(),
-                     Cellular.listening(),
-                     Cellular.connecting(),
-                     Cellular.ready(),
-                     Particle.connected(),
-                     connect_begin_ms + max_connect_time_ms - millis());
-            break;
-        case PUBLISH:
-            snprintf(buf, sizeof(buf), "[%lu] PUBLISH\n", millis());
-            break;
-        case SLEEP:
-            snprintf(buf, sizeof(buf), "[%lu] SLEEP\n", millis());
-            break;
-        }
-        Serial.write(buf);
-    }
-}
+/** Print a rate-limited debug message. */
+#define APP_TRACE(s, ...) { \
+    snprintf(buf, sizeof(buf), s, ## __VA_ARGS__);  \
+    Serial.write(buf);}
 
-/** Delay for the specified time while maintaining regular services. */
-void appDelay(uint32_t delay_ms) {
-    uint32_t wait_begin = millis();
-    while (millis() < wait_begin + delay_ms) {
-        wd.checkin();
-        gps.update();
-        Particle.process();
-        printStatus();
-    }
+#define APP_WAIT_UNTIL(cond, s, ...) { \
+    while (!(cond)) { \
+        checkin(); \
+        PRINT_STATUS(s, ## __VA_ARGS__); \
+    }}
+
+void checkin() {
+    wd.checkin();
+    gps.update();
+    Particle.process();
 }
 
 // -- Main loop ------------------------------------------------------------------------------------
 
 void setup() {
+    Serial.begin(9600);
+
+    // Higher frequency keepalives for AT&T IoT network
+    Particle.keepAlive(30);
+
     // Initialize FuelGauge for battery readings
     fuel.wakeup();
     fuel.quickStart();
 }
 
 void loop() {
-    wd.checkin();
-    gps.update();
-    Particle.process();
-    printStatus();
+    APP_WAIT_UNTIL(
+        last_send_unixtime == 0 || Time.now() > last_send_unixtime + min_publish_interval_sec,
+        "[%lu] %ld s until publish\n",
+        millis(), last_send_unixtime + min_publish_interval_sec - Time.now());
 
-    switch (state) {
-    case IDLE:
-        if (last_send_unixtime == 0 || Time.now() > last_send_unixtime + min_publish_interval_sec) {
-            last_send_unixtime = Time.now();
+    last_send_unixtime = Time.now();
 
-            snprintf(buf, sizeof(buf), "[%lu] Time to publish.\n", millis());
-            Serial.write(buf);
+    APP_TRACE("[%lu] Starting FuelGauge.\n", millis());
+    fuel.wakeup();
 
-            snprintf(buf, sizeof(buf), "[%lu] Starting GPS...\n", millis());
-            Serial.write(buf);
-            gps_begin_ms = millis();
-            resetGPSInfo();
-            gps.start();
+    APP_TRACE("[%lu] Starting GPS.\n", millis());
+    gps_begin_ms = millis();
+    resetGPSInfo();
+    gps.start();
 
-            state = WAIT_FOR_GPS;
+    APP_TRACE("[%lu] Connecting.\n", millis());
+    connect_begin_ms = millis();
+    Cellular.on();
+    Particle.connect();
+
+    APP_WAIT_UNTIL(
+        Particle.connected() || millis() > connect_begin_ms + max_connect_time_ms,
+        "[%lu] Connecting, %lu s left\n",
+        millis(), (connect_begin_ms + max_connect_time_ms - millis()) / 1000);
+
+    if (Particle.connected()) {
+        connect_time_ms = millis() - connect_begin_ms;
+        APP_TRACE("[%lu] Connected in %lu ms.\n", millis(), connect_time_ms);
+
+        if (!fix_valid) {
+            gps.assist();
         }
-        break;
 
-    case WAIT_FOR_GPS:
-        if (fix_valid || millis() > gps_begin_ms + max_gps_time_ms) {
+        APP_WAIT_UNTIL(
+            fix_valid || millis() > gps_begin_ms + max_gps_time_ms,
+            "[%lu] Waiting for fix, %lu s left\n",
+            millis(), (gps_begin_ms + max_gps_time_ms - millis()) / 1000);
 
-            ttff = millis() - gps_begin_ms;
-
-            if (fix_valid) {
-                snprintf(buf, sizeof(buf), "[%lu] Got GPS fix in %lu ms.\n", millis(), ttff);
-                Serial.write(buf);
-            } else {
-                snprintf(buf, sizeof(buf), "[%lu] Failed to get GPS fix unaided.\n", millis());
-                Serial.write(buf);
-            }
-
-            snprintf(buf, sizeof(buf), "[%lu] Connecting...\n", millis());
-            Serial.write(buf);
-            connect_begin_ms = millis();
-            Cellular.on();
-            Particle.connect();
-            Particle.keepAlive(30); // Higher frequency keepalives for AT&T IoT network
-            state = WAIT_FOR_CONNECT;
-        }
-        break;
-
-    case WAIT_FOR_CONNECT:
-        if (Particle.connected()) {
-            connect_time_ms = millis() - connect_begin_ms;
-            snprintf(buf, sizeof(buf), "[%lu] Connected in %lu ms.\n", millis(), connect_time_ms);
-            Serial.write(buf);
-
-            state = PUBLISH;
-        } else if (millis() > connect_begin_ms + max_connect_time_ms) {
-            connect_time_ms = millis() - connect_begin_ms;
-            snprintf(buf, sizeof(buf), "[%lu] Failed to connect.\n", millis());
-            Serial.write(buf);
-
-            state = SLEEP;
-        }
-        break;
-
-    case PUBLISH:
-        if (Particle.connected()) {
-            snprintf(buf, sizeof(buf), "[%lu] Waiting %lu ms before querying cellular modem.\n",
-                     millis(), post_connect_delay_ms);
-            Serial.write(buf);
-            appDelay(post_connect_delay_ms);
+        if (!fix_valid) {
+            // Fall back to cellular location
+            APP_TRACE("[%lu] Failed to get GPS fix. Requesting CellLocate.\n", millis());
 
             CellularHelperLocationResponse cell_loc = CellularHelper.getLocation();
             if (cell_loc.valid) {
-                snprintf(buf, sizeof(buf), "[%lu] Cellular location %f,%f~%d\n",
-                         millis(), cell_loc.lat, cell_loc.lon, cell_loc.uncertainty);
-                Serial.write(buf);
+                APP_TRACE("[%lu] Publishing cellular location %f,%f~%d\n",
+                          millis(), cell_loc.lat, cell_loc.lon, cell_loc.uncertainty);
                 snprintf(buf, sizeof(buf), "%f,%f,%d",
                          cell_loc.lat, cell_loc.lon, cell_loc.uncertainty);
                 Particle.publish("cl", buf, PRIVATE, NO_ACK);
+            } else {
+                APP_TRACE("[%lu] Failed to get cellular location.\n", millis());
             }
-
-            CellularHelperRSSIQualResponse rssiQual = CellularHelper.getRSSIQual();
-            snprintf(buf, sizeof(buf),
-                     "[%lu] SoC %.1f, TTFF %lu ms, connect time %lu ms, "
-                     "RSSI %d, qual %d.\n",
-                     millis(), fuel.getSoC(), ttff, connect_time_ms,
-                     rssiQual.rssi, rssiQual.qual);
-            Serial.write(buf);
-            snprintf(buf, sizeof(buf), "%.1f,%.1f,%.0f,%d",
-                     fuel.getSoC(),
-                     ttff / 1000.0,
-                     connect_time_ms / 1000.0,
-                     rssiQual.rssi);
-            Particle.publish("s", buf, PRIVATE, NO_ACK);
-
-            gps.assist(cell_loc);
-            if (!fix_valid) {
-                snprintf(buf, sizeof(buf), "[%lu] Waiting %lu ms for fix after assisting.\n",
-                         millis(), max_gps_post_assist_time_ms);
-                Serial.write(buf);
-
-                uint32_t wait_start = millis();
-                while (!fix_valid && millis() < wait_start + max_gps_post_assist_time_ms) {
-                    wd.checkin();
-                    gps.update();
-                    Particle.process();
-                    printStatus();
-                }
-
-                ttff = millis() - gps_begin_ms;
-            }
-
-            snprintf(buf, sizeof(buf),
-                     "[%lu] Sending fix: %f,%f~%f, %.1f mph, %u satellites.\n",
-                     millis(), lat, lon, acc, speed_mph, num_satellites);
-            Serial.write(buf);
-            snprintf(buf, sizeof(buf), "%f,%f,%.0f,%.0f,%u",
-                     lat, lon, acc, speed_mph, num_satellites);
-            Particle.publish("g", buf, PRIVATE, NO_ACK);
         }
-        state = SLEEP;
-        break;
 
-    case SLEEP:
-        snprintf(buf, sizeof(buf), "[%lu] Waiting %lu ms for messages to go out.\n",
-                 millis(), pre_sleep_delay_ms);
-        Serial.write(buf);
-        appDelay(pre_sleep_delay_ms);
+        // Publish GPS location even if it does not meet acceptability criteria
+        APP_TRACE("[%lu] Publishing GPS location: %f,%f~%f, %.1f mph, %u satellites.\n",
+                 millis(), lat, lon, acc, speed_mph, num_satellites);
+        snprintf(buf, sizeof(buf), "%f,%f,%.0f,%.0f,%u",
+                 lat, lon, acc, speed_mph, num_satellites);
+        Particle.publish("g", buf, PRIVATE, NO_ACK);
 
-        snprintf(buf, sizeof(buf), "[%lu] Turning cellular off.\n", millis());
-        Serial.write(buf);
-        Cellular.off();
+        // Report statistics
+        CellularHelperRSSIQualResponse rssiQual = CellularHelper.getRSSIQual();
+        APP_TRACE("[%lu] Publishing SoC %.1f, TTFF %lu ms, connect time %lu ms, RSSI %d.\n",
+                  millis(), fuel.getSoC(), ttff, connect_time_ms, rssiQual.rssi);
+        snprintf(buf, sizeof(buf), "%.1f,%.1f,%.0f,%d",
+                 fuel.getSoC(),
+                 ttff / 1000.0,
+                 connect_time_ms / 1000.0,
+                 rssiQual.rssi);
+        Particle.publish("s", buf, PRIVATE, NO_ACK);
 
-        snprintf(buf, sizeof(buf), "[%lu] Stopping GPS.\n", millis());
-        Serial.write(buf);
-        gps.stop();
+        APP_TRACE("[%lu] Waiting %lu ms for messages to go out.\n",
+                  millis(), pad_delay_ms);
+        delay(pad_delay_ms);
+    } else {
+        APP_TRACE("[%lu] Failed to connect.\n", millis());
+    }
 
-        int32_t sleep_time_sec = (last_send_unixtime == 0)
-            ? min_publish_interval_sec
-            : (last_send_unixtime + min_publish_interval_sec - Time.now());
-        if (sleep_time_sec < 0) {
-            sleep_time_sec = 10;
-        }
-        if (sleep_time_sec > min_publish_interval_sec) {
-            sleep_time_sec = min_publish_interval_sec;
-        }
-        snprintf(buf, sizeof(buf), "[%lu] Pausing microcontroller for %ld seconds.\n",
-                 millis(), sleep_time_sec);
-        Serial.write(buf);
-        state = IDLE;
-        delay(5000); // Wait for the last few serial messages to send and the cellular modem to turn
-                     // off
+    APP_TRACE("[%lu] Sleeping FuelGauge.\n", millis());
+    fuel.sleep();
 
-        fuel.sleep();
+    APP_TRACE("[%lu] Turning cellular off.\n", millis());
+    Cellular.off();
+
+    APP_TRACE("[%lu] Stopping GPS.\n", millis());
+    gps.stop();
+
+    int32_t sleep_time_sec =
+        (last_send_unixtime == 0)
+        ? min_publish_interval_sec
+        : (last_send_unixtime + min_publish_interval_sec - Time.now());
+    if (sleep_time_sec > min_publish_interval_sec) {
+        sleep_time_sec = min_publish_interval_sec;
+    }
+    if (sleep_time_sec > 0) {
+        APP_TRACE("[%lu] Pausing microcontroller for %ld seconds.\n",
+                  millis(), sleep_time_sec);
+        delay(pad_delay_ms);
+
         // We only pause the controller instead of using SLEEP_MODE_DEEP because the latter causes
         // intermittent hanging on wake:
         // https://community.particle.io/t/gps-causes-hanging-on-wake-from-sleep-mode-deep/33946
         // A5 is a dummy pin that should not change state
         System.sleep(A5, RISING, SLEEP_NETWORK_STANDBY, sleep_time_sec);
-        fuel.wakeup();
-        state = IDLE;
-        break;
     }
 }

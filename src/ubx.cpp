@@ -59,7 +59,7 @@
 #include "ubx.h"
 
 #define UBX_CONFIG_TIMEOUT  200     // ms, timeout for waiting on an ACK
-#define UBX_PACKET_TIMEOUT	2		// ms, timeout for waiting on further data once some data has been received
+#define UBX_PACKET_TIMEOUT	10		// ms, timeout for waiting on further data once some data has been received
 
 #define MIN(X,Y)    ((X) < (Y) ? (X) : (Y))
 
@@ -189,42 +189,35 @@ void UBX::cold_start() {
     send_message(UBX_MSG_CFG_RST, _buf.raw, sizeof(_buf.payload_tx_cfg_rst));
 }
 
-void UBX::assist(CellularHelperLocationResponse &cell_loc) {
+void UBX::assist() {
     if (!Particle.connected()) return;
 
     if (_last_assistnow_fetch_unixtime == 0
         || Time.now() > _last_assistnow_fetch_unixtime + ASSISTNOW_FETCH_INTERVAL_S) {
-        UBX_TRACE_ASSIST("[%lu] Time to fetch AssistNow", millis());
+        UBX_TRACE_ASSIST("[%lu] Requesting AssistNow Online.", millis());
 
         if (!_assistnow_ip) {
-            UBX_TRACE_ASSIST("[%lu] Resolving AssistNow domain", millis());
+            UBX_TRACE_ASSIST("[%lu] Resolving AssistNow domain.", millis());
             _assistnow_ip = Cellular.resolve(ASSISTNOW_DOMAIN);
         }
 
         if (_assistnow_ip) {
             TCPClient client;
-            UBX_TRACE_ASSIST("[%lu] Connecting to AssistNow", millis());
+            UBX_TRACE_ASSIST("[%lu] Connecting to AssistNow.", millis());
             if (client.connect(_assistnow_ip, 80)) {
                 client.printf(
                     "GET /GetOnlineData.ashx?"
-                    "token=%s;gnss=gps,glo;datatype=eph,alm,aux,pos;"
-                    "lat=%f;lon=%f;alt=%f;pacc=%f;%s HTTP/1.1\n",
-                    ASSISTNOW_TOKEN,
-                    cell_loc.lat, cell_loc.lon, cell_loc.alt,
-                    cell_loc.valid ? cell_loc.uncertainty : 6000000,
-                    cell_loc.valid ? "filteronpos;" : "");
+                    "token=%s;gnss=gps,glo;datatype=eph,alm,aux,pos; HTTP/1.1\n",
+                    ASSISTNOW_TOKEN);
                 client.printf("Host: %s\n\n", ASSISTNOW_DOMAIN);
 
                 UBX_TRACE_ASSIST("[%lu] Sent request:", millis());
                 UBX_TRACE_ASSIST("[%lu] GET /GetOnlineData.ashx?"
-                                 "token=%s;datatype=eph,alm,aux,pos;"
-                                 "lat=%f;lon=%f;alt=%d;pacc=%d;filteronpos; HTTP/1.1",
-                                 millis(), ASSISTNOW_TOKEN,
-                                 cell_loc.lat, cell_loc.lon, cell_loc.alt,
-                                 cell_loc.valid ? cell_loc.uncertainty : 6000000);
+                                 "token=%s;gnss=gps,glo;datatype=eph,alm,aux,pos; HTTP/1.1",
+                                 millis(), ASSISTNOW_TOKEN);
                 UBX_TRACE_ASSIST("[%lu] Host: %s", millis(), ASSISTNOW_DOMAIN);
 
-                UBX_TRACE_ASSIST("[%lu] Waiting for AssistNow response", millis());
+                UBX_TRACE_ASSIST("[%lu] Waiting for AssistNow response.", millis());
                 uint32_t last_received = millis();
                 const uint32_t timeout = 10000;
                 uint32_t response_size = 0;
@@ -254,17 +247,17 @@ void UBX::assist(CellularHelperLocationResponse &cell_loc) {
                     }
                 }
                 client.stop();
-                UBX_TRACE_ASSIST("[%lu] Forwarded %lu bytes of AssistNow to receiver", millis(), response_size);
+                UBX_TRACE_ASSIST("[%lu] Forwarded %lu bytes of AssistNow to receiver.", millis(), response_size);
 
                 _last_assistnow_fetch_unixtime = Time.now();
             } else {
-                UBX_TRACE_ASSIST("[%lu] Failed to connect to AssistNow", millis());
+                UBX_TRACE_ASSIST("[%lu] Failed to connect to AssistNow.", millis());
             }
         } else {
-            UBX_TRACE_ASSIST("[%lu] Failed to resolve AssistNow domain", millis());
+            UBX_TRACE_ASSIST("[%lu] Failed to resolve AssistNow domain.", millis());
         }
     } else {
-        UBX_TRACE_ASSIST("[%lu] Skipping AssistNow fetch; %d seconds until next fetch", millis(),
+        UBX_TRACE_ASSIST("[%lu] Skipping AssistNow fetch; %d seconds until next fetch.", millis(),
                          _last_assistnow_fetch_unixtime + ASSISTNOW_FETCH_INTERVAL_S - Time.now());
     }
 }
@@ -381,7 +374,7 @@ void UBX::parse_char(const uint8_t b) {
     /* Expecting first checksum byte */
     case UBX_DECODE_CHKSUM1:
         if (_rx_ck_a != b) {
-            UBX_WARN("ubx checksum err");
+            UBX_WARN("ubx checksum err for msg %0.4X", _rx_msg);
             decode_init();
         } else {
             _decode_state = UBX_DECODE_CHKSUM2;
@@ -391,7 +384,7 @@ void UBX::parse_char(const uint8_t b) {
     /* Expecting second checksum byte */
     case UBX_DECODE_CHKSUM2:
         if (_rx_ck_b != b) {
-            UBX_WARN("ubx checksum err");
+            UBX_WARN("ubx checksum err for msg %0.4X", _rx_msg);
         } else {
             payload_rx_done();    // finish payload processing
         }

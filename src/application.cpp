@@ -102,7 +102,6 @@ void handleGPSMessage(uint16_t msg_class_id, const ubx_buf_t &buf) {
         Serial.write(buf); \
     }}
 
-/** Print a rate-limited debug message. */
 #define APP_TRACE(s, ...) { \
     snprintf(buf, sizeof(buf), s, ## __VA_ARGS__);  \
     Serial.write(buf);}
@@ -199,14 +198,14 @@ void loop() {
         Particle.publish("g", buf, PRIVATE, NO_ACK);
 
         // Report statistics
-        CellularHelperRSSIQualResponse rssiQual = CellularHelper.getRSSIQual();
+        CellularHelperRSSIQualResponse rssi_qual = CellularHelper.getRSSIQual();
         APP_TRACE("[%lu] Publishing SoC %.1f, TTFF %lu ms, connect time %lu ms, RSSI %d.\n",
-                  millis(), fuel.getSoC(), ttff, connect_time_ms, rssiQual.rssi);
+                  millis(), fuel.getSoC(), ttff, connect_time_ms, rssi_qual.rssi);
         snprintf(buf, sizeof(buf), "%.1f,%.1f,%.0f,%d",
                  fuel.getSoC(),
                  ttff / 1000.0,
                  connect_time_ms / 1000.0,
-                 rssiQual.rssi);
+                 rssi_qual.rssi);
         Particle.publish("s", buf, PRIVATE, NO_ACK);
 
         APP_TRACE("[%lu] Waiting %lu ms for messages to go out.\n",

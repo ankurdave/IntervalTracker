@@ -208,10 +208,11 @@ void UBX::assist(CellularHelperLocationResponse &cell_loc) {
                 client.printf(
                     "GET /GetOnlineData.ashx?"
                     "token=%s;gnss=gps,glo;datatype=eph,alm,aux,pos;"
-                    "lat=%f;lon=%f;alt=%f;pacc=%f;filteronpos; HTTP/1.1\n",
+                    "lat=%f;lon=%f;alt=%f;pacc=%f;%s HTTP/1.1\n",
                     ASSISTNOW_TOKEN,
                     cell_loc.lat, cell_loc.lon, cell_loc.alt,
-                    cell_loc.valid ? cell_loc.uncertainty : 6000000);
+                    cell_loc.valid ? cell_loc.uncertainty : 6000000,
+                    cell_loc.valid ? "filteronpos;" : "");
                 client.printf("Host: %s\n\n", ASSISTNOW_DOMAIN);
 
                 UBX_TRACE_ASSIST("[%lu] Sent request:", millis());
@@ -247,10 +248,10 @@ void UBX::assist(CellularHelperLocationResponse &cell_loc) {
                         } else if (c != '\r') {
                             num_newlines_seen = 0;
                         }
-                    }
 
-                    // Process messages from receiver while waiting
-                    update();
+                        // Process messages from receiver to avoid dropping position fixes
+                        update();
+                    }
                 }
                 client.stop();
                 UBX_TRACE_ASSIST("[%lu] Forwarded %lu bytes of AssistNow to receiver", millis(), response_size);

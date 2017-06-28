@@ -20,8 +20,10 @@ void handleGPSMessage(uint16_t msg_class_id, const ubx_buf_t &buf);
 const int32_t min_publish_interval_sec = 15 * 60;
 /** Interval between debug messages (ms). */
 const uint32_t min_print_interval_ms = 1000;
-/** Timeout for acquiring a GPS fix (ms). */
-const uint32_t max_gps_time_ms = 5 * 60 * 1000;
+/** Timeout for acquiring a GPS fix before providing assistance (ms). */
+const uint32_t max_gps_time_ms = 60 * 1000;
+/** Timeout for acquiring a GPS fix after providing assistance (ms). */
+const uint32_t max_gps_post_assist_time_ms = 60 * 1000;
 /** Timeout for connecting to the cellular network and Particle cloud (ms). */
 const uint32_t max_connect_time_ms = 3 * 60 * 1000;
 
@@ -186,7 +188,7 @@ void loop() {
                 snprintf(buf, sizeof(buf), "[%lu] Got GPS fix in %lu ms.\n", millis(), ttff);
                 Serial.write(buf);
             } else {
-                snprintf(buf, sizeof(buf), "[%lu] Failed to get GPS fix.\n", millis());
+                snprintf(buf, sizeof(buf), "[%lu] Failed to get GPS fix unaided.\n", millis());
                 Serial.write(buf);
             }
 
@@ -248,6 +250,21 @@ void loop() {
             Particle.publish("s", buf, PRIVATE, NO_ACK);
 
             gps.assist(cell_loc);
+            if (!fix_valid) {
+                snprintf(buf, sizeof(buf), "[%lu] Waiting %lu ms for fix after assisting.\n",
+                         millis(), max_gps_post_assist_time_ms);
+                Serial.write(buf);
+
+                uint32_t wait_start = millis();
+                while (!fix_valid && millis() < wait_start + max_gps_post_assist_time_ms) {
+                    wd.checkin();
+                    gps.update();
+                    Particle.process();
+                    printStatus();
+                }
+
+                ttff = millis() - gps_begin_ms;
+            }
 
             snprintf(buf, sizeof(buf),
                      "[%lu] Sending fix: %f,%f~%f, %.1f mph, %u satellites.\n",

@@ -226,7 +226,20 @@ void loop() {
     Cellular.off();
 
     APP_TRACE("[%lu] Stopping GPS.\n", millis());
-    checkin();
     gps.stop();
-    checkin();
+
+    int32_t sleep_time_sec =
+        (last_send_unixtime == 0)
+        ? min_publish_interval_sec
+        : (last_send_unixtime + min_publish_interval_sec - Time.now());
+    if (sleep_time_sec > min_publish_interval_sec) {
+        sleep_time_sec = min_publish_interval_sec;
+    }
+    if (sleep_time_sec > 0) {
+        APP_TRACE("[%lu] Sleeping for %ld seconds.\n",
+                  millis(), sleep_time_sec);
+        delay(pad_delay_ms);
+
+        System.sleep(SLEEP_MODE_DEEP, sleep_time_sec);
+    }
 }

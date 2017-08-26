@@ -107,6 +107,16 @@ void UBX::start() {
 
     wait_for_ack(UBX_MSG_CFG_PRT, UBX_CONFIG_TIMEOUT); // no ack expected
 
+    /* Send a CFG-PM2 message to limit peak current */
+    memset(&_buf.payload_tx_cfg_pm2, 0, sizeof(_buf.payload_tx_cfg_pm2));
+    _buf.payload_tx_cfg_pm2.version = 0x02;
+    _buf.payload_tx_cfg_pm2.flags = 0x00021100;
+    _buf.payload_tx_cfg_pm2.updatePeriod = 1000;
+    _buf.payload_tx_cfg_pm2.searchPeriod = 10000;
+    send_message(UBX_MSG_CFG_PM2, _buf.raw, sizeof(_buf.payload_tx_cfg_pm2));
+
+    if (!wait_for_ack(UBX_MSG_CFG_PM2, UBX_CONFIG_TIMEOUT)) UBX_WARN("No ack for CFG-PM2");
+
     /* Send a CFG-RATE message to define update rate */
     memset(&_buf.payload_tx_cfg_rate, 0, sizeof(_buf.payload_tx_cfg_rate));
     _buf.payload_tx_cfg_rate.measRate   = UBX_TX_CFG_RATE_MEASINTERVAL;

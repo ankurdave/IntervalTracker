@@ -75,6 +75,7 @@
 #define UBX_ID_CFG_NAV5         0x24
 #define UBX_ID_CFG_NAVX5        0x23
 #define UBX_ID_CFG_PRT          0x00
+#define UBX_ID_CFG_PM2          0x3B
 #define UBX_ID_CFG_RATE         0x08
 #define UBX_ID_CFG_RST          0x04
 #define UBX_ID_CFG_SBAS         0x16
@@ -94,6 +95,7 @@
 #define UBX_MSG_CFG_NAV5         ((UBX_CLASS_CFG) | UBX_ID_CFG_NAV5 << 8)
 #define UBX_MSG_CFG_NAVX5        ((UBX_CLASS_CFG) | UBX_ID_CFG_NAVX5 << 8)
 #define UBX_MSG_CFG_PRT          ((UBX_CLASS_CFG) | UBX_ID_CFG_PRT << 8)
+#define UBX_MSG_CFG_PM2          ((UBX_CLASS_CFG) | UBX_ID_CFG_PM2 << 8)
 #define UBX_MSG_CFG_RATE         ((UBX_CLASS_CFG) | UBX_ID_CFG_RATE << 8)
 #define UBX_MSG_CFG_RST          ((UBX_CLASS_CFG) | UBX_ID_CFG_RST << 8)
 #define UBX_MSG_CFG_SBAS         ((UBX_CLASS_CFG) | UBX_ID_CFG_SBAS << 8)
@@ -266,6 +268,22 @@ typedef struct {
     uint16_t    reserved5;
 } ubx_payload_tx_cfg_prt_t;
 
+/* Tx CFG-PM2 */
+typedef struct {
+    uint8_t version; /* 0x02 */
+    uint8_t reserved1;
+    uint8_t maxStartupStateDur;
+    uint8_t reserved2;
+    uint32_t flags; /* default for SPG 3.01: 0x00021000 (updateEPH=1, mode=1) */
+    uint32_t updatePeriod; /* default for SPG 3.01: 1000 */
+    uint32_t searchPeriod; /* default for SPG 3.01: 10000 */
+    uint32_t gridOffset;
+    uint16_t onTime;
+    uint16_t minAcqTime;
+    uint8_t reserved3[20];
+    uint32_t extIntInactivityMs;
+} ubx_payload_tx_cfg_pm2_t;
+
 /* Tx CFG-RATE */
 typedef struct {
     uint16_t    measRate;   /** Measurement Rate, GPS measurements are taken every measRate milliseconds */
@@ -398,6 +416,7 @@ typedef union {
     ubx_payload_tx_cfg_nav5_t         payload_tx_cfg_nav5;
     ubx_payload_tx_cfg_navx5_t        payload_tx_cfg_navx5;
     ubx_payload_tx_cfg_prt_t          payload_tx_cfg_prt;
+    ubx_payload_tx_cfg_pm2_t          payload_tx_cfg_pm2;
     ubx_payload_tx_cfg_rate_t         payload_tx_cfg_rate;
     ubx_payload_tx_cfg_rst_t          payload_tx_cfg_rst;
     ubx_payload_tx_cfg_sbas_t         payload_tx_cfg_sbas;

@@ -37,7 +37,7 @@ const uint32_t max_gps_time_ms = 5 * 60 * 1000;
  * be sent and the cellular modem to be stopped properly. Without it, the system sometimes wakes up
  * quickly after being put to sleep.
  */
-const uint32_t pad_delay_ms = 2000;
+const uint32_t pad_delay_ms = 5000;
 
 // INTERNALS =======================================================================================
 
@@ -226,24 +226,7 @@ void loop() {
     Cellular.off();
 
     APP_TRACE("[%lu] Stopping GPS.\n", millis());
+    checkin();
     gps.stop();
-
-    int32_t sleep_time_sec =
-        (last_send_unixtime == 0)
-        ? min_publish_interval_sec
-        : (last_send_unixtime + min_publish_interval_sec - Time.now());
-    if (sleep_time_sec > min_publish_interval_sec) {
-        sleep_time_sec = min_publish_interval_sec;
-    }
-    if (sleep_time_sec > 0) {
-        APP_TRACE("[%lu] Pausing microcontroller for %ld seconds.\n",
-                  millis(), sleep_time_sec);
-        delay(pad_delay_ms);
-
-        // We only pause the controller instead of using SLEEP_MODE_DEEP because the latter causes
-        // intermittent hanging on wake:
-        // https://community.particle.io/t/gps-causes-hanging-on-wake-from-sleep-mode-deep/33946
-        // A5 is a dummy pin that should not change state
-        System.sleep(A5, RISING, SLEEP_NETWORK_STANDBY, sleep_time_sec);
-    }
+    checkin();
 }

@@ -1,0 +1,124 @@
+<!DOCTYPE html>
+<html>
+    <head>
+        <title>LS400 location</title>
+        <meta name="viewport" content="initial-scale=1.0">
+        <meta charset="utf-8">
+        <style>
+         html, body {
+             height: 100%;
+             margin: 0;
+             padding: 0;
+         }
+         #map {
+             height: 100%;
+         }
+        </style>
+        <script src="https://ajax.googleapis.com/ajax/libs/jquery/3.2.1/jquery.min.js"></script>
+    </head>
+    <body>
+        <div id="map"></div>
+        <script>
+         var map;
+         var API = 'https://qjafe0n2qc.execute-api.us-east-1.amazonaws.com/prod/tracker-g';
+         var GOOGLE_API_KEY = 'AIzaSyCUhMSkMA41b5GUO-MKHlIc4mC1FYrPzXk';
+         var paths = [];
+
+         $.ajax(API, {
+             method: 'GET',
+             data: {},
+             headers:{},
+             success: drawPaths
+         });
+
+         function drawPaths(data, status, jqXHR) {
+             var lat;
+             var lng;
+             var ts;
+
+             var points = [];
+             var timestamps = [];
+
+             data["Items"].forEach(function(item) {
+                 if ("event" in item && (item["event"]["S"] == "g" || item["event"]["S"] == "cl")) {
+                     var elems = item["data"]["S"].split(",");
+                     if (elems.length >= 2) {
+                         lat = parseFloat(elems[0]);
+                         lng = parseFloat(elems[1]);
+                         ts = new Date(item["published_at"]["S"]).toLocaleString();
+                     } else {
+                         return;
+                     }
+                 } else {
+                     return;
+                 }
+
+                 new google.maps.Marker({
+                     position: {
+                         lat: lat,
+                         lng: lng
+                     },
+                     title: ts,
+                     map: map,
+                     icon: {
+                         path: google.maps.SymbolPath.CIRCLE,
+                         scale: 2,
+                         strokeWeight: 1,
+                         strokeColor: 'white',
+                         strokeOpacity: 1.0,
+                         fillColor: 'black',
+                         fillOpacity: 1.0,
+                         zIndex: points.length
+                     }
+                 });
+                 points.push({
+                     lat: lat,
+                     lng: lng
+                 });
+                 timestamps.push(ts);
+             });
+
+             // Draw lines
+             new google.maps.Polyline({
+                 path: points,
+                 map: map
+             })
+
+             // Highlight first and last locations
+             if (points.length > 1) {
+                 highlightPoint(points[0], timestamps[0], 'green', 0);
+             }
+             if (points.length > 0) {
+                 highlightPoint(points[points.length - 1], timestamps[points.length - 1], 'red', points.length - 1);
+             }
+         }
+
+         function highlightPoint(latlng, ts, color, zIndex) {
+             new google.maps.Marker({
+                 position: latlng,
+                 title: ts,
+                 map: map,
+                 icon: {
+                     path: google.maps.SymbolPath.CIRCLE,
+                     scale: 5,
+                     strokeColor: color,
+                     zIndex: zIndex
+                 }
+             });
+             new google.maps.InfoWindow({
+                 position: latlng,
+                 content: ts,
+                 map: map,
+                 zIndex: zIndex
+             });
+         }
+
+         function initMap() {
+             map = new google.maps.Map(document.getElementById('map'),
+                                       {center: {lat: 37.876683, lng: -122.256606}, zoom: 13});
+         }
+        </script>
+        <script src="https://maps.googleapis.com/maps/api/js?key=AIzaSyCUhMSkMA41b5GUO-MKHlIc4mC1FYrPzXk&callback=initMap"
+                async defer></script>
+    </body>
+</html>

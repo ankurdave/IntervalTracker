@@ -68,7 +68,7 @@
                          strokeOpacity: 1.0,
                          fillColor: 'black',
                          fillOpacity: 1.0,
-                         zIndex: points.length
+                         zIndex: -points.length
                      }
                  });
                  points.push({
@@ -84,12 +84,12 @@
                  map: map
              })
 
-             // Highlight first and last locations
+             // Highlight first and last locations. Points are stored in reverse order
              if (points.length > 1) {
-                 highlightPoint(points[0], timestamps[0], 'green', 0);
+                 highlightPoint(points[0], timestamps[0], 'red', 0);
              }
              if (points.length > 0) {
-                 highlightPoint(points[points.length - 1], timestamps[points.length - 1], 'red', points.length - 1);
+                 highlightPoint(points[points.length - 1], timestamps[points.length - 1], 'green', -(points.length - 1));
              }
          }
 

@@ -200,14 +200,12 @@ void loop() {
         Particle.publish("g", buf, PRIVATE);
 
         // Report statistics
-        CellularHelperRSSIQualResponse rssi_qual = CellularHelper.getRSSIQual();
-        APP_TRACE("[%lu] Publishing SoC %.1f, TTFF %lu ms, connect time %lu ms, RSSI %d.\n",
-                  millis(), fuel.getSoC(), ttff, connect_time_ms, rssi_qual.rssi);
-        snprintf(buf, sizeof(buf), "%.1f,%.1f,%.0f,%d",
+        APP_TRACE("[%lu] Publishing SoC %.1f, TTFF %lu ms, connect time %lu ms\n",
+                  millis(), fuel.getSoC(), ttff, connect_time_ms);
+        snprintf(buf, sizeof(buf), "%.1f,%.1f,%.0f",
                  fuel.getSoC(),
                  ttff / 1000.0,
-                 connect_time_ms / 1000.0,
-                 rssi_qual.rssi);
+                 connect_time_ms / 1000.0);
         Particle.publish("s", buf, PRIVATE);
 
         APP_TRACE("[%lu] Waiting %lu ms for messages to go out.\n",

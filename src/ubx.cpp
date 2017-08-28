@@ -135,14 +135,6 @@ void UBX::start() {
 
     if (!wait_for_ack(UBX_MSG_CFG_NAV5, UBX_CONFIG_TIMEOUT)) UBX_WARN("No ack for CFG-NAV5");
 
-    /* send a NAVX5 message to enable AssistNow Autonomous */
-    memset(&_buf.payload_tx_cfg_navx5, 0, sizeof(_buf.payload_tx_cfg_navx5));
-    _buf.payload_tx_cfg_navx5.mask1 = 0x4000; // only apply AssistNow Autonomous settings
-    _buf.payload_tx_cfg_navx5.aopCfg = 0x1; // enable AssistNow Autonomous
-    send_message(UBX_MSG_CFG_NAVX5, _buf.raw, sizeof(_buf.payload_tx_cfg_navx5));
-
-    if (!wait_for_ack(UBX_MSG_CFG_NAVX5, UBX_CONFIG_TIMEOUT)) UBX_WARN("No ack for CFG-NAVX5");
-
     /* configure message rates */
     /* the last argument is divisor for measurement rate (set by CFG RATE) */
     configure_message_rate(UBX_MSG_NAV_PVT, 1);

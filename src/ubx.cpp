@@ -209,13 +209,13 @@ void UBX::assist() {
             if (client.connect(_assistnow_ip, 80)) {
                 client.printf(
                     "GET /GetOnlineData.ashx?"
-                    "token=%s;gnss=gps,glo;datatype=eph,alm,aux,pos; HTTP/1.1\n",
+                    "token=%s;datatype=eph,alm,aux; HTTP/1.1\n",
                     ASSISTNOW_TOKEN);
                 client.printf("Host: %s\n\n", ASSISTNOW_DOMAIN);
 
                 UBX_TRACE_ASSIST("[%lu] Sent request:", millis());
                 UBX_TRACE_ASSIST("[%lu] GET /GetOnlineData.ashx?"
-                                 "token=%s;gnss=gps,glo;datatype=eph,alm,aux,pos; HTTP/1.1",
+                                 "token=%s;datatype=eph,alm,aux; HTTP/1.1",
                                  millis(), ASSISTNOW_TOKEN);
                 UBX_TRACE_ASSIST("[%lu] Host: %s", millis(), ASSISTNOW_DOMAIN);
 

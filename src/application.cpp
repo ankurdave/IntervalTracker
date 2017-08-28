@@ -183,7 +183,7 @@ void loop() {
                           millis(), cell_loc.lat, cell_loc.lon, cell_loc.uncertainty);
                 snprintf(buf, sizeof(buf), "%f,%f,%d",
                          cell_loc.lat, cell_loc.lon, cell_loc.uncertainty);
-                Particle.publish("cl", buf, PRIVATE, NO_ACK);
+                Particle.publish("cl", buf, PRIVATE);
             } else {
                 APP_TRACE("[%lu] Failed to get cellular location.\n", millis());
             }
@@ -197,7 +197,7 @@ void loop() {
                  millis(), lat, lon, acc, speed_mph, num_satellites);
         snprintf(buf, sizeof(buf), "%f,%f,%.0f,%.0f,%u",
                  lat, lon, acc, speed_mph, num_satellites);
-        Particle.publish("g", buf, PRIVATE, NO_ACK);
+        Particle.publish("g", buf, PRIVATE);
 
         // Report statistics
         CellularHelperRSSIQualResponse rssi_qual = CellularHelper.getRSSIQual();
@@ -208,7 +208,7 @@ void loop() {
                  ttff / 1000.0,
                  connect_time_ms / 1000.0,
                  rssi_qual.rssi);
-        Particle.publish("s", buf, PRIVATE, NO_ACK);
+        Particle.publish("s", buf, PRIVATE);
 
         APP_TRACE("[%lu] Waiting %lu ms for messages to go out.\n",
                   millis(), pad_delay_ms);

@@ -47,7 +47,6 @@
                          lat = parseFloat(elems[0]);
                          lng = parseFloat(elems[1]);
                          var acc = parseFloat(elems[2]);
-                         if (acc > 2000) return;
                          accuracies.push(acc);
                          ts = new Date(item["published_at"]["S"]).toLocaleString();
                      } else {

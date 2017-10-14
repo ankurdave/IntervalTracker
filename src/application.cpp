@@ -1,6 +1,9 @@
 /**
- * Publishes device GPS and cellular location to Particle Cloud at regular intervals (default 15
- * minutes), sleeping in between to minimize power usage.
+ * Publishes device GPS and cellular location to Particle Cloud at regular intervals (default 6
+ * hours), sleeping in between to minimize power usage. When connected to input power, publishes
+ * continuously, default every 10 seconds.
+ *
+ * To wake the device as soon as USB power is supplied, connect VIN to WKP.
  *
  * Written for the Particle Asset Tracker 3G v2 (Particle Electron, u-blox SARA-U260 cellular modem,
  * u-blox MAX-M8Q GPS receiver).
@@ -11,6 +14,7 @@
 #include "CellularHelper.h"
 #include "Particle.h"
 #include "ubx.h"
+#include "PowerCheck.h"
 
 // Use the AT&T IoT network
 STARTUP(cellular_credentials_set("m2m.com.attz", "", "", NULL));
@@ -21,8 +25,8 @@ SYSTEM_MODE(MANUAL);
 
 // CONFIGURATION ===================================================================================
 
-/** Interval between location reports (s). */
-const int32_t min_publish_interval_sec = 15 * 60;
+/** Interval between location reports when car is not running (s). */
+const int32_t min_publish_interval_sec = 6 * 60 * 60;
 /** Interval between debug messages (ms). */
 const uint32_t min_print_interval_ms = 1000;
 /** Timeout for connecting to the cellular network and Particle cloud (ms). */
@@ -32,6 +36,8 @@ const uint32_t max_connect_time_ms = 3 * 60 * 1000;
  * have immediate benefit.
  */
 const uint32_t max_gps_time_ms = 5 * 60 * 1000;
+/** Interval between location reports while car is running (ms). */
+const uint32_t continuous_publish_interval_ms = 10 * 1000;
 /**
  * Padding time before turning cellular and microprocessor off (ms). This allows published events to
  * be sent and the cellular modem to be stopped properly. Without it, the system sometimes wakes up
@@ -48,6 +54,7 @@ void handleGPSMessage(uint16_t msg_class_id, const ubx_buf_t &buf);
 ApplicationWatchdog wd(60000, System.reset);
 UBX gps(handleGPSMessage);
 FuelGauge fuel;
+PowerCheck powerCheck;
 
 // Rate limiting and timeout variables
 int32_t last_send_unixtime = 0;
@@ -119,6 +126,14 @@ void checkin() {
     Particle.process();
 }
 
+void app_delay(uint32_t delay_ms) {
+    uint32_t delay_start_ms = millis();
+    while (millis() < delay_start_ms + delay_ms) {
+        checkin();
+        delay(1);
+    }
+}
+
 // -- Main loop ------------------------------------------------------------------------------------
 
 void setup() {
@@ -130,6 +145,8 @@ void setup() {
     // Initialize FuelGauge for battery readings
     fuel.wakeup();
     fuel.quickStart();
+
+    powerCheck.setup();
 }
 
 void loop() {
@@ -154,7 +171,8 @@ void loop() {
     Particle.connect();
 
     APP_WAIT_UNTIL(
-        Particle.connected() || millis() > connect_begin_ms + max_connect_time_ms,
+        Particle.connected() || (
+            !powerCheck.getHasPower() && millis() > connect_begin_ms + max_connect_time_ms),
         "[%lu] Connecting, %lu s left\n",
         millis(), (connect_begin_ms + max_connect_time_ms - millis()) / 1000);
 
@@ -200,19 +218,28 @@ void loop() {
         Particle.publish("g", buf, PRIVATE);
 
         // Report statistics
-        APP_TRACE("[%lu] Publishing SoC %.1f, TTFF %lu ms, connect time %lu ms\n",
-                  millis(), fuel.getSoC(), ttff, connect_time_ms);
+        APP_TRACE("[%lu] Publishing voltage %.1f, TTFF %lu ms, connect time %lu ms\n",
+                  millis(), fuel.getVCell(), ttff, connect_time_ms);
         snprintf(buf, sizeof(buf), "%.1f,%.1f,%.0f",
-                 fuel.getSoC(),
+                 fuel.getVCell(),
                  ttff / 1000.0,
                  connect_time_ms / 1000.0);
         Particle.publish("s", buf, PRIVATE);
 
+        // Publish continuously while car is running
+        while (powerCheck.getHasPower()) {
+            APP_TRACE("[%lu] Publishing GPS location: %f,%f~%f, %.1f mph, %u satellites.\n",
+                      millis(), lat, lon, acc, speed_mph, num_satellites);
+            snprintf(buf, sizeof(buf), "%f,%f,%.0f,%.0f,%u",
+                     lat, lon, acc, speed_mph, num_satellites);
+            Particle.publish("g", buf, PRIVATE, NO_ACK);
+
+            app_delay(continuous_publish_interval_ms);
+        }
+
         APP_TRACE("[%lu] Waiting %lu ms for messages to go out.\n",
                   millis(), pad_delay_ms);
-        checkin();
-        delay(pad_delay_ms);
-        checkin();
+        app_delay(pad_delay_ms);
     } else {
         APP_TRACE("[%lu] Failed to connect.\n", millis());
     }
@@ -236,7 +263,7 @@ void loop() {
     if (sleep_time_sec > 0) {
         APP_TRACE("[%lu] Sleeping for %ld seconds.\n",
                   millis(), sleep_time_sec);
-        delay(pad_delay_ms);
+        app_delay(pad_delay_ms);
 
         System.sleep(SLEEP_MODE_DEEP, sleep_time_sec);
     }

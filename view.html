@@ -76,7 +76,9 @@
                  }
              });
 
-             var sortedKeys = Object.keys(items).sort();
+             var sortedKeys = Object.keys(items).sort().filter(function(t, i) {
+                 return (new Date().getTime() - (24 * 60 * 60 * 1000)) < new Date(t).getTime();
+             });
 
              function formatItem(t, isHTML) {
                  var nl = isHTML ? '<br>' : '\n';

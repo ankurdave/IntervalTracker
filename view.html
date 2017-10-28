@@ -106,9 +106,27 @@
                          strokeOpacity: 1.0,
                          fillColor: 'black',
                          fillOpacity: 1.0,
-                         zIndex: i
                      }
                  });
+
+                 // Highlight points with status reports
+                 if ('status' in items[t]) {
+                     new google.maps.Marker({
+                         position: items[t]['point'],
+                         title: formatItem(t, false),
+                         map: map,
+                         icon: {
+                             path: google.maps.SymbolPath.CIRCLE,
+                             scale: 5,
+                             strokeColor: 'green',
+                         }
+                     });
+                     new google.maps.InfoWindow({
+                         position: items[t]['point'],
+                         content: formatItem(t, true),
+                         map: map,
+                     });
+                 }
              });
 
              // Draw lines
@@ -130,7 +148,6 @@
                          path: google.maps.SymbolPath.CIRCLE,
                          scale: 5,
                          strokeColor: 'red',
-                         zIndex: 0
                      }
                  });
                  new google.maps.Circle({
@@ -141,13 +158,11 @@
                      fillOpacity: 0.1,
                      strokeColor: 'cyan',
                      strokeOpacity: 0.4,
-                     zIndex: 0
                  });
                  new google.maps.InfoWindow({
                      position: items[lastT]['point'],
                      content: formatItem(lastT, true),
                      map: map,
-                     zIndex: 0
                  });
                  map.setCenter(items[lastT]['point']);
              }

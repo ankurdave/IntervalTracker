@@ -55,16 +55,21 @@
              data["Items"].forEach(function(item) {
                  if ("event" in item && (item["event"]["S"] == "g" || item["event"]["S"] == "cl")) {
                      var elems = item["data"]["S"].split(",");
-                     if (elems.length >= 4) {
+                     if (elems.length >= 3) {
                          var time = formatTimestamp(item["published_at"]["S"]);
                          var lat = parseFloat(elems[0]);
                          var lng = parseFloat(elems[1]);
                          var acc = parseFloat(elems[2]);
-                         var speed = parseFloat(elems[3]);
-                         if (!(time in items)) {
-                             items[time] = {};
+                         if (acc <= 10000) {
+                             var speed = -1.0;
+                             if (elems.length >= 4) {
+                                 speed = parseFloat(elems[3]);
+                             }
+                             if (!(time in items)) {
+                                 items[time] = {};
+                             }
+                             $.extend(items[time], {'point': {'lat': lat, 'lng': lng}, 'speed': speed, 'accuracy': acc});
                          }
-                         $.extend(items[time], {'point': {'lat': lat, 'lng': lng}, 'speed': speed, 'accuracy': acc});
                      }
                  } else if ("event" in item && (item["event"]["S"] == "s")) {
                      var time = formatTimestamp(item["published_at"]["S"]);
@@ -120,11 +125,6 @@
                              scale: 5,
                              strokeColor: 'green',
                          }
-                     });
-                     new google.maps.InfoWindow({
-                         position: items[t]['point'],
-                         content: formatItem(t, true),
-                         map: map,
                      });
                  }
              });

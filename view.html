@@ -20,10 +20,14 @@
         <div id="map"></div>
         <script>
          var map;
-         var API = 'https://qjafe0n2qc.execute-api.us-east-1.amazonaws.com/prod/tracker-g';
+         var last_published_at;
+         var INITIAL_API = 'https://qjafe0n2qc.execute-api.us-east-1.amazonaws.com/prod/tracker-g';
+         var POLL_API = 'https://qjafe0n2qc.execute-api.us-east-1.amazonaws.com/prod/tracker-g-poll';
          var GOOGLE_API_KEY = 'AIzaSyCUhMSkMA41b5GUO-MKHlIc4mC1FYrPzXk';
+         var POLL_INTERVAL_MS = 10000;
 
-         $.ajax(API, {
+         console.log("Initial fetch");
+         $.ajax(INITIAL_API, {
              method: 'GET',
              data: {},
              headers:{},
@@ -98,6 +102,7 @@
              }
 
              // Draw points
+             console.log("Drawing " + sortedKeys.length + " items");
              sortedKeys.forEach(function(t, i) {
                  new google.maps.Marker({
                      position: items[t]['point'],
@@ -165,6 +170,32 @@
                      map: map,
                  });
                  map.setCenter(items[lastT]['point']);
+             }
+
+             // Poll for updates
+             if (data["Items"].length > 0) {
+                 last_published_at = data["Items"][0]["published_at"]["S"];
+             }
+             window.setTimeout(poll, POLL_INTERVAL_MS);
+         }
+
+         function poll() {
+             if (last_published_at) {
+                 console.log("Polling for items after " + last_published_at);
+                 $.ajax(POLL_API, {
+                     method: 'GET',
+                     data: {'last_published_at': last_published_at},
+                     headers: {},
+                     success: drawPaths
+                 });
+             } else {
+                 console.log("Retrying initial fetch");
+                 $.ajax(INITIAL_API, {
+                     method: 'GET',
+                     data: {},
+                     headers: {},
+                     success: drawPaths
+                 });
              }
          }
 

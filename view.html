@@ -20,11 +20,17 @@
         <div id="map"></div>
         <script>
          var map;
-         var last_published_at;
          var INITIAL_API = 'https://qjafe0n2qc.execute-api.us-east-1.amazonaws.com/prod/tracker-g';
          var POLL_API = 'https://qjafe0n2qc.execute-api.us-east-1.amazonaws.com/prod/tracker-g-poll';
          var GOOGLE_API_KEY = 'AIzaSyCUhMSkMA41b5GUO-MKHlIc4mC1FYrPzXk';
          var POLL_INTERVAL_MS = 10000;
+         // Timestamp of last received entry, used to poll for updates
+         var last_published_at;
+         // Current location, used to draw a continued path after receiving an update
+         var cur_loc;
+         // Marker objects indicating current location, saved for deletion when
+         // the current location changes
+         var cur_markers = [];
 
          console.log("Initial fetch");
          $.ajax(INITIAL_API, {
@@ -135,17 +141,25 @@
              });
 
              // Draw lines
+             var path = $.map(sortedKeys, function(t) {
+                 return items[t]['point'];
+             });
+             if (cur_loc) {
+                 path.unshift(cur_loc);
+             }
              new google.maps.Polyline({
-                 path: $.map(sortedKeys, function(t) {
-                     return items[t]['point'];
-                 }),
+                 path: path,
                  map: map
              })
 
              // Highlight last location
              if (sortedKeys.length > 0) {
+                 // Delete markers highlighting previous last location
+                 cur_markers.forEach(function(m) { m.setMap(null); });
+                 cur_markers = [];
+
                  var lastT = sortedKeys[sortedKeys.length - 1];
-                 new google.maps.Marker({
+                 cur_markers.push(new google.maps.Marker({
                      position: items[lastT]['point'],
                      title: formatItem(lastT, false),
                      map: map,
@@ -154,8 +168,8 @@
                          scale: 5,
                          strokeColor: 'red',
                      }
-                 });
-                 new google.maps.Circle({
+                 }));
+                 cur_markers.push(new google.maps.Circle({
                      center: items[lastT]['point'],
                      radius: items[lastT]['accuracy'],
                      map: map,
@@ -163,13 +177,14 @@
                      fillOpacity: 0.1,
                      strokeColor: 'cyan',
                      strokeOpacity: 0.4,
-                 });
-                 new google.maps.InfoWindow({
+                 }));
+                 cur_markers.push(new google.maps.InfoWindow({
                      position: items[lastT]['point'],
                      content: formatItem(lastT, true),
                      map: map,
-                 });
-                 map.setCenter(items[lastT]['point']);
+                 }));
+                 map.panTo(items[lastT]['point']);
+                 cur_loc = items[lastT]['point'];
              }
 
              // Poll for updates

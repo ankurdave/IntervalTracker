@@ -16,9 +16,6 @@
 #include "ubx.h"
 #include "PowerCheck.h"
 
-// Use the AT&T IoT network
-STARTUP(cellular_credentials_set("m2m.com.attz", "", "", NULL));
-
 // Threading is required to be able to time out connecting to the cellular network
 SYSTEM_THREAD(ENABLED);
 SYSTEM_MODE(MANUAL);
@@ -26,7 +23,7 @@ SYSTEM_MODE(MANUAL);
 // CONFIGURATION ===================================================================================
 
 /** Interval between location reports when car is not running (s). */
-const int32_t min_publish_interval_sec = 6 * 60 * 60;
+const int32_t min_publish_interval_sec = 24 * 60 * 60;
 /** Interval between debug messages (ms). */
 const uint32_t min_print_interval_ms = 1000;
 /** Timeout for connecting to the cellular network and Particle cloud (ms). */
@@ -181,7 +178,8 @@ void loop() {
         APP_TRACE("[%lu] Connected in %lu ms.\n", millis(), connect_time_ms);
 
         if (!fix_valid) {
-            gps.assist();
+            // Commented out because assistance is too expensive on the Particle network
+            // gps.assist();
         }
 
         APP_WAIT_UNTIL(

@@ -211,8 +211,8 @@ void loop() {
         if (Particle.connected()) {
             APP_TRACE("[%lu] Publishing GPS location: %f,%f~%f, %.1f mph, %u satellites.\n",
                       millis(), lat, lon, acc, speed_mph, num_satellites);
-            snprintf(buf, sizeof(buf), "%f,%f,%.0f,%.0f,%u",
-                     lat, lon, acc, speed_mph, num_satellites);
+            snprintf(buf, sizeof(buf), "%f,%f,%.0f,%.0f",
+                     lat, lon, acc, speed_mph);
             Particle.publish("g", buf, PRIVATE);
         }
 

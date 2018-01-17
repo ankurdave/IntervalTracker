@@ -136,9 +136,6 @@ void app_delay(uint32_t delay_ms) {
 void setup() {
     Serial.begin(9600);
 
-    // Higher frequency keepalives for AT&T IoT network
-    Particle.keepAlive(30);
-
     // Initialize FuelGauge for battery readings
     fuel.wakeup();
     fuel.quickStart();

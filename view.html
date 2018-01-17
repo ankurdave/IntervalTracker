@@ -28,6 +28,7 @@
          var last_published_at;
          // Current location, used to draw a continued path after receiving an update
          var cur_loc;
+         var cur_t;
          // Marker objects indicating current location, saved for deletion when
          // the current location changes
          var cur_markers = [];
@@ -109,6 +110,9 @@
 
              // Draw points
              console.log("Drawing " + sortedKeys.length + " items");
+             function accuracyToCircleOpacity(acc) {
+                 return Math.min(Math.max(10 / acc, 0.1), 0.8);
+             }
              sortedKeys.forEach(function(t, i) {
                  new google.maps.Marker({
                      position: items[t]['point'],
@@ -123,6 +127,15 @@
                          fillColor: 'black',
                          fillOpacity: 1.0,
                      }
+                 });
+                 new google.maps.Circle({
+                     center: items[t]['point'],
+                     radius: items[t]['accuracy'],
+                     map: map,
+                     fillColor: 'gray',
+                     fillOpacity: accuracyToCircleOpacity(items[t]['accuracy']),
+                     strokeColor: 'gray',
+                     strokeOpacity: 0,
                  });
 
                  // Highlight points with status reports
@@ -140,17 +153,29 @@
                  }
              });
 
-             // Draw lines
-             var path = $.map(sortedKeys, function(t) {
-                 return items[t]['point'];
+             // Draw solid lines between continuously-reported locations and dashed lines between
+             // locations separated by a gap in time
+             var prev_t = cur_t;
+             var prev_loc = cur_loc;
+             sortedKeys.forEach(function(t, i) {
+                 if (prev_t && prev_loc) {
+                     if (new Date(t).getTime() > new Date(prev_t).getTime() + (20 * 1000)) {
+                         new google.maps.Polyline({
+                             path: [prev_loc, items[t]['point']],
+                             map: map,
+                             strokeColor: '#F00'
+                         })
+                     } else {
+                         new google.maps.Polyline({
+                             path: [prev_loc, items[t]['point']],
+                             map: map,
+                         })
+                     }
+                 }
+
+                 prev_t = t;
+                 prev_loc = items[t]['point'];
              });
-             if (cur_loc) {
-                 path.unshift(cur_loc);
-             }
-             new google.maps.Polyline({
-                 path: path,
-                 map: map
-             })
 
              // Highlight last location
              if (sortedKeys.length > 0) {
@@ -184,6 +209,7 @@
                      map: map,
                  }));
                  map.panTo(items[lastT]['point']);
+                 cur_t = lastT;
                  cur_loc = items[lastT]['point'];
              }
 

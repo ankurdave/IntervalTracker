@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html>
     <head>
-        <title>LS400 location</title>
+        <title>${tracker_name} location</title>
         <meta name="viewport" content="initial-scale=1.0">
         <meta charset="utf-8">
         <style>
@@ -20,9 +20,8 @@
         <div id="map"></div>
         <script>
          var map;
-         var INITIAL_API = 'https://qjafe0n2qc.execute-api.us-east-1.amazonaws.com/prod/tracker-g';
-         var POLL_API = 'https://qjafe0n2qc.execute-api.us-east-1.amazonaws.com/prod/tracker-g-poll';
-         var GOOGLE_API_KEY = 'AIzaSyCUhMSkMA41b5GUO-MKHlIc4mC1FYrPzXk';
+         var INITIAL_API = '${location_history_url}';
+         var POLL_API = '${location_updates_url}';
          var POLL_INTERVAL_MS = 10000;
          // Timestamp of last received entry, used to poll for updates
          var last_published_at;
@@ -245,7 +244,7 @@
                                        {center: {lat: 37.876683, lng: -122.256606}, zoom: 13});
          }
         </script>
-        <script src="https://maps.googleapis.com/maps/api/js?key=AIzaSyCUhMSkMA41b5GUO-MKHlIc4mC1FYrPzXk&callback=initMap"
+        <script src="https://maps.googleapis.com/maps/api/js?key=${google_api_key}&callback=initMap"
                 async defer></script>
     </body>
 </html>

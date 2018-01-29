@@ -2,3 +2,9 @@
 /lib
 /target
 /src/secrets.h
+/terraform.tfvars
+/lambda_functions.zip
+/*.tfstate
+/*.tfstate.backup
+/.terraform
+/view.html

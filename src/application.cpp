@@ -1,5 +1,5 @@
 /**
- * Publishes device GPS and cellular location to Particle Cloud at regular intervals (default 6
+ * Publishes device GPS and cellular location to Particle Cloud at regular intervals (default 24
  * hours), sleeping in between to minimize power usage. When connected to input power, publishes
  * continuously, default every 10 seconds.
  *
@@ -27,12 +27,12 @@ const int32_t min_publish_interval_sec = 24 * 60 * 60;
 /** Interval between debug messages (ms). */
 const uint32_t min_print_interval_ms = 1000;
 /** Timeout for connecting to the cellular network and Particle cloud (ms). */
-const uint32_t max_connect_time_ms = 3 * 60 * 1000;
+const uint32_t max_connect_time_ms = 2 * 60 * 1000;
 /**
  * Timeout for acquiring a GPS fix (ms). Must be greater than max_connect_time if assistance is to
  * have immediate benefit.
  */
-const uint32_t max_gps_time_ms = 5 * 60 * 1000;
+const uint32_t max_gps_time_ms = 3 * 60 * 1000;
 /** Interval between location reports while car is running (ms). */
 const uint32_t continuous_publish_interval_ms = 10 * 1000;
 /**
@@ -175,18 +175,10 @@ void loop() {
         APP_TRACE("[%lu] Connected in %lu ms.\n", millis(), connect_time_ms);
 
         if (!fix_valid) {
-            // Commented out because assistance is too expensive on the Particle network
-            // gps.assist();
-        }
+            gps.assist();
 
-        APP_WAIT_UNTIL(
-            fix_valid || millis() > gps_begin_ms + max_gps_time_ms,
-            "[%lu] Waiting for fix, %lu s left\n",
-            millis(), (gps_begin_ms + max_gps_time_ms - millis()) / 1000);
-
-        if (!fix_valid) {
-            // Fall back to cellular location
-            APP_TRACE("[%lu] Failed to get GPS fix. Requesting CellLocate.\n", millis());
+            // Get cellular location while waiting for GPS
+            APP_TRACE("[%lu] Failed to get immediate GPS fix. Requesting CellLocate.\n", millis());
 
             checkin();
             CellularHelperLocationResponse cell_loc = CellularHelper.getLocation();
@@ -203,6 +195,11 @@ void loop() {
                 APP_TRACE("[%lu] Failed to get cellular location.\n", millis());
             }
         }
+
+        APP_WAIT_UNTIL(
+            fix_valid || millis() > gps_begin_ms + max_gps_time_ms,
+            "[%lu] Waiting for fix, %lu s left\n",
+            millis(), (gps_begin_ms + max_gps_time_ms - millis()) / 1000);
 
         // Publish GPS location even if it does not meet acceptability criteria
         if (ttff == 0) {

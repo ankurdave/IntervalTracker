@@ -70,16 +70,19 @@
                          var lat = parseFloat(elems[0]);
                          var lng = parseFloat(elems[1]);
                          var acc = parseFloat(elems[2]);
-                         if (acc <= 10000) {
-                             var speed = -1.0;
-                             if (elems.length >= 4) {
-                                 speed = parseFloat(elems[3]);
-                             }
-                             if (!(time in items)) {
-                                 items[time] = {};
-                             }
-                             $.extend(items[time], {'point': {'lat': lat, 'lng': lng}, 'speed': speed, 'accuracy': acc});
+                         var speed = -1.0;
+                         var voltage = 0.0;
+                         if (item["event"]["S"] == "g") {
+                             speed = parseFloat(elems[3]);
+                             voltage = parseFloat(elems[4]);
+                         } else {
+                             voltage = parseFloat(elems[3]);
                          }
+
+                         if (!(time in items)) {
+                             items[time] = {};
+                         }
+                         $.extend(items[time], {'point': {'lat': lat, 'lng': lng}, 'speed': speed, 'accuracy': acc, 'voltage': voltage});
                      }
                  } else if ("event" in item && (item["event"]["S"] == "s")) {
                      var time = formatTimestamp(item["published_at"]["S"]);
@@ -103,6 +106,9 @@
                  }
                  if ('status' in items[t]) {
                      result += nl + 'status: ' + items[t]['status'];
+                 }
+                 if ('voltage' in items[t]) {
+                     result += nl + 'charge: ' + items[t]['voltage'] + ' volts';
                  }
                  return result;
              }

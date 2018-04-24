@@ -185,10 +185,10 @@ void loop() {
             checkin();
             if (cell_loc.valid) {
                 if (Particle.connected()) {
-                    APP_TRACE("[%lu] Publishing cellular location %f,%f~%d\n",
-                              millis(), cell_loc.lat, cell_loc.lon, cell_loc.uncertainty);
-                    snprintf(buf, sizeof(buf), "%f,%f,%d",
-                             cell_loc.lat, cell_loc.lon, cell_loc.uncertainty);
+                    APP_TRACE("[%lu] Publishing cellular location %f,%f~%d, voltage %.1f\n",
+                              millis(), cell_loc.lat, cell_loc.lon, cell_loc.uncertainty, fuel.getVCell());
+                    snprintf(buf, sizeof(buf), "%f,%f,%d,%.0f",
+                             cell_loc.lat, cell_loc.lon, cell_loc.uncertainty, fuel.getVCell());
                     Particle.publish("cl", buf, PRIVATE);
                 }
             } else {
@@ -201,15 +201,11 @@ void loop() {
             "[%lu] Waiting for fix, %lu s left\n",
             millis(), (gps_begin_ms + max_gps_time_ms - millis()) / 1000);
 
-        // Publish GPS location even if it does not meet acceptability criteria
-        if (ttff == 0) {
-            ttff = millis() - gps_begin_ms;
-        }
-        if (Particle.connected()) {
-            APP_TRACE("[%lu] Publishing GPS location: %f,%f~%f, %.1f mph, %u satellites.\n",
-                      millis(), lat, lon, acc, speed_mph, num_satellites);
-            snprintf(buf, sizeof(buf), "%f,%f,%.0f,%.0f",
-                     lat, lon, acc, speed_mph);
+        if (Particle.connected() && fix_valid) {
+            APP_TRACE("[%lu] Publishing GPS location: %f,%f~%f, %.1f mph, %u satellites, voltage %.1f.\n",
+                      millis(), lat, lon, acc, speed_mph, num_satellites, fuel.getVCell());
+            snprintf(buf, sizeof(buf), "%f,%f,%.0f,%.0f,%.1f",
+                     lat, lon, acc, speed_mph, fuel.getVCell());
             Particle.publish("g", buf, PRIVATE);
         }
 
@@ -226,16 +222,16 @@ void loop() {
 
         // Publish continuously while car is running
         while (powerCheck.getHasPower()) {
-            if (Particle.connected()) {
-                APP_TRACE("[%lu] Publishing GPS location: %f,%f~%f, %.1f mph, %u satellites.\n",
-                          millis(), lat, lon, acc, speed_mph, num_satellites);
-                snprintf(buf, sizeof(buf), "%f,%f,%.0f,%.0f,%u",
-                         lat, lon, acc, speed_mph, num_satellites);
+            if (Particle.connected() && fix_valid) {
+                APP_TRACE("[%lu] Publishing GPS location: %f,%f~%f, %.1f mph, %u satellites, voltage %.1f.\n",
+                          millis(), lat, lon, acc, speed_mph, num_satellites, fuel.getVCell());
+                snprintf(buf, sizeof(buf), "%f,%f,%.0f,%.0f,%.1f",
+                         lat, lon, acc, speed_mph, fuel.getVCell());
                 Particle.publish("g", buf, PRIVATE, NO_ACK);
             } else {
-                APP_TRACE("[%lu] Not connected; skipping location publish: "
-                          "%f,%f~%f, %.1f mph, %u satellites.\n",
-                          millis(), lat, lon, acc, speed_mph, num_satellites);
+                APP_TRACE("[%lu] Skipping location publish: "
+                          "%f,%f~%f, %.1f mph, %u satellites, voltage %.1f.\n",
+                          millis(), lat, lon, acc, speed_mph, num_satellites, fuel.getVCell());
             }
 
             app_delay(continuous_publish_interval_ms);

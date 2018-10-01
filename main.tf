@@ -5,6 +5,14 @@ provider "aws" {
   version    = "~> 1.7"
 }
 
+terraform {
+    backend "s3" {
+        bucket = "ankurdave-aws-config"
+        key = "IntervalTracker.tfstate"
+        region = "us-east-1"
+    }
+}
+
 provider "archive" {
   version = "~> 1.0"
 }
